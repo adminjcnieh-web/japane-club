@@ -1,28 +1,14 @@
-# Konfigurasi Cloudflare Worker. Paket GRATIS cukup untuk 30-50 anggota.
 name = "japanese-club"
-main = "src/index.js"
+main = "backend/src/index.js"
 compatibility_date = "2025-01-01"
 
-# Frontend (folder public/) dilayani langsung oleh Worker yang sama -> satu alamat, tanpa CORS.
-# Permintaan yang tidak cocok dengan file statis (mis. /api/...) diteruskan ke Worker.
 [assets]
-directory = "../public"
+directory = "./public"
 binding = "ASSETS"
 
-# Variabel TIDAK rahasia. Aman ditaruh di sini.
 [vars]
 FIREBASE_PROJECT_ID = "web-jc-nekat"
-# Web API Key Firebase (Project settings > General > Web API Key). Ini bukan rahasia,
-# tetapi isi dulu dengan milikmu sendiri.
 FIREBASE_API_KEY = "AIzaSyAAbPk7D639z5KRP80KHPb4Nd4d3ZLktRg"
-# Domain "email palsu" internal untuk mengubah username menjadi email Firebase Auth.
 EMAIL_DOMAIN = "japanese-club.local"
-# WIB = 420 menit (UTC+7). WITA = 480, WIT = 540.
 TZ_OFFSET_MINUTES = "420"
-# Hanya perlu bila frontend dibuka dari alamat lain (mis. saat pengembangan). Pisahkan dengan koma.
 ALLOWED_ORIGINS = ""
-
-# RAHASIA (jangan ditulis di sini!) diatur lewat perintah:
-#   npx wrangler secret put FIREBASE_SERVICE_ACCOUNT
-#   npx wrangler secret put QR_SECRET
-# Untuk pengembangan lokal, taruh di file backend/.dev.vars (lihat .dev.vars.example).
