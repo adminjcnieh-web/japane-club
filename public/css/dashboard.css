@@ -1,0 +1,163 @@
+/* Dasbor, layar QR, pemindai, jadwal/kalender */
+
+/* ---------- Ledger statistik (satu garis berisi beberapa angka, bukan kartu seragam) ---------- */
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.ledger-item { padding: 18px 20px; border-left: 1px solid var(--line); min-width: 0; }
+.ledger-item:first-child { border-left: 0; }
+.ledger-value { font-family: var(--font-display); font-weight: 700; font-size: 2.1rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ledger-value small { font-size: 1rem; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.ledger-label { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+.ledger-item.accent .ledger-value { color: var(--beni); }
+
+/* ---------- Banner sesi berjalan ---------- */
+.live-banner {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 16px 20px; border-radius: var(--r-lg);
+  background: var(--sumi); color: #fff; margin-bottom: 18px;
+}
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: #6fd08c; box-shadow: 0 0 0 4px rgba(111, 208, 140, 0.25); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(111, 208, 140, 0); } }
+.live-banner .grow strong { font-family: var(--font-display); font-size: 1.1rem; }
+.live-banner .btn { background: #fff; border-color: #fff; color: var(--sumi); }
+
+/* ---------- Grafik ---------- */
+.chart-box { position: relative; height: 260px; }
+.chart-box.short { height: 230px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.86rem; color: var(--ink-2); margin-top: 10px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+/* ---------- Aktivitas & pengumuman ---------- */
+.activity { list-style: none; margin: 0; padding: 0; }
+.activity li { display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line-soft); }
+.activity li:last-child { border-bottom: 0; }
+.activity .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--beni); margin-top: 9px; flex: none; }
+.activity .when { color: var(--muted); font-size: 0.82rem; }
+
+.note-item { padding: 12px 0; border-bottom: 1px solid var(--line-soft); cursor: pointer; display: block; width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-top: 0; }
+.note-item:last-child { border-bottom: 0; }
+.note-item h3 { font-size: 1rem; }
+.note-item p { color: var(--ink-2); font-size: 0.92rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---------- Cincin persentase ---------- */
+.ring { position: relative; width: 132px; height: 132px; flex: none; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring .track { stroke: var(--sand); }
+.ring .bar { stroke: var(--beni); stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+.ring-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+.ring-center strong { font-family: var(--font-display); font-size: 1.8rem; line-height: 1; display: block; }
+.ring-center span { font-size: 0.78rem; color: var(--muted); }
+
+.mini-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.mini-stats div { text-align: center; padding: 10px 4px; border-radius: var(--r-md); background: var(--washi); }
+.mini-stats strong { display: block; font-family: var(--font-display); font-size: 1.35rem; line-height: 1.2; }
+.mini-stats span { font-size: 0.78rem; color: var(--muted); }
+
+/* ---------- Layar QR (elemen "berani") ---------- */
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.qr-card {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--paper);
+  background-image: var(--seigaiha-paper);
+  background-size: 48px 24px;
+  background-position: bottom;
+  background-repeat: repeat-x;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 26px 26px 54px;
+  text-align: center;
+}
+.qr-card h2 { font-size: 1.5rem; }
+.qr-meta { color: var(--ink-2); margin-top: 4px; }
+.qr-frame {
+  position: relative;
+  width: min(100%, 420px);
+  aspect-ratio: 1;
+  margin: 20px auto 16px;
+  padding: 18px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  box-shadow: 0 0 0 6px var(--washi), 0 0 0 7px var(--line);
+}
+.qr-frame svg { display: block; width: 100%; height: 100%; }
+.qr-frame.expired svg { opacity: 0.12; filter: blur(2px); }
+.qr-frame .qr-overlay { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; font-weight: 700; }
+.qr-timer { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.timer-ring { position: relative; width: 52px; height: 52px; }
+.timer-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.timer-ring .track { stroke: var(--sand); }
+.timer-ring .bar { stroke: var(--beni); stroke-linecap: round; }
+.timer-ring span { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stage-status { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.attendee-list { max-height: 520px; overflow-y: auto; }
+.attendee { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--line-soft); }
+.attendee:last-child { border-bottom: 0; }
+.attendee-new { animation: flash 1.6s ease-out; }
+@keyframes flash { from { background: var(--sakura); } to { background: transparent; } }
+.count-big { font-family: var(--font-display); font-size: 2.4rem; font-weight: 700; line-height: 1; }
+
+.qr-card:fullscreen { display: grid; place-content: center; border-radius: 0; background-color: var(--paper); }
+.qr-card:fullscreen .qr-frame { width: min(70vh, 80vw); }
+
+/* ---------- Pemindai ---------- */
+.scanner { max-width: 520px; margin: 0 auto; }
+.viewfinder {
+  position: relative; width: 100%; aspect-ratio: 1; max-height: 68vh;
+  border-radius: var(--r-lg); overflow: hidden; background: #1c1a17;
+}
+.viewfinder video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.viewfinder .guide { position: absolute; inset: 14%; pointer-events: none; }
+.viewfinder .guide i { position: absolute; width: 34px; height: 34px; border: 4px solid #fff; opacity: 0.95; }
+.guide i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
+.guide i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-radius: 0 10px 0 0; }
+.guide i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 10px; }
+.guide i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-radius: 0 0 10px 0; }
+.viewfinder .vf-msg { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: #fff; padding: 24px; gap: 12px; align-content: center; }
+.scan-result { text-align: center; padding: 30px 20px; }
+.scan-result .big-icon { width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 14px; display: grid; place-items: center; }
+.scan-result .big-icon .icon { width: 36px; height: 36px; }
+.scan-result.ok .big-icon { background: var(--ok-bg); color: var(--ok); }
+.scan-result.late .big-icon { background: var(--warn-bg); color: var(--warn); }
+.scan-result.fail .big-icon { background: var(--bad-bg); color: var(--bad); }
+.steps { margin: 0; padding-left: 1.2rem; color: var(--ink-2); }
+.steps li { margin: 4px 0; }
+
+/* ---------- Kalender ---------- */
+.cal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-dow { text-align: center; font-size: 0.82rem; color: var(--muted); padding: 4px 0; }
+.cal-day {
+  position: relative; aspect-ratio: 1 / 0.9; min-height: 44px; border-radius: var(--r-md);
+  background: var(--paper); border: 1px solid var(--line-soft); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 6px 2px 4px; gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.cal-day:hover { border-color: var(--line); background: var(--washi); }
+.cal-day.other { opacity: 0.4; }
+.cal-day.today { box-shadow: inset 0 0 0 2px var(--beni); font-weight: 700; }
+.cal-day[aria-pressed='true'] { background: var(--sakura); border-color: #e7c2c2; }
+.cal-dots { display: flex; gap: 3px; }
+.cal-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--beni); }
+.cal-dots i.closed { background: var(--muted); }
+
+.event { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line-soft); }
+.event:last-child { border-bottom: 0; }
+.event-date { flex: none; width: 58px; text-align: center; padding: 6px 0; border-radius: var(--r-md); background: var(--washi); border: 1px solid var(--line-soft); }
+.event-date strong { display: block; font-family: var(--font-display); font-size: 1.5rem; line-height: 1.1; }
+.event-date span { font-size: 0.78rem; color: var(--muted); }
+.event h3 { font-size: 1.04rem; }
+.event .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 0.9rem; margin-top: 4px; }
+.group-title { font-family: var(--font-display); font-size: 1.05rem; padding: 18px 0 2px; color: var(--ink-2); }

@@ -1,0 +1,333 @@
+/* ==========================================================================
+   Japanese Club - gaya dasar
+   Arah: Japanese Modern Minimalism.
+   Warna: washi (putih gading), sumi (arang), beni (merah Jepang), sedikit sakura & pasir.
+   Satu elemen berani: layar QR + panel login bermotif seigaiha. Sisanya tenang.
+   ========================================================================== */
+
+:root {
+  --washi: #f6f3ec;
+  --paper: #fcfbf8;
+  --sumi: #26231f;
+  --ink-2: #4a463f;
+  --muted: #857f74;
+  --line: #e2dccf;
+  --line-soft: #ece7dc;
+  --sand: #ebe4d4;
+  --sakura: #f3dede;
+
+  --beni: #b3262e;
+  --beni-dark: #8f1d24;
+  --beni-tint: #f6e4e1;
+
+  --ok: #46745a;
+  --ok-bg: #e2eee6;
+  --warn: #9c6a17;
+  --warn-bg: #f4e9d0;
+  --info: #4a6e8d;
+  --info-bg: #e0e9f1;
+  --sick: #6f6096;
+  --sick-bg: #ebe6f3;
+  --bad: #9e2a2a;
+  --bad-bg: #f5e0dd;
+
+  --font-display: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', Georgia, serif;
+  --font-body: 'Zen Kaku Gothic New', 'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --r-lg: 14px;
+  --r-md: 9px;
+  --r-sm: 6px;
+  --sidebar-w: 248px;
+  --tabbar-h: 62px;
+  --focus: 0 0 0 3px rgba(179, 38, 46, 0.28);
+
+  /* Pola seigaiha (gelombang). Dua versi: di atas washi, dan di atas panel merah. */
+  --seigaiha-paper: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='24' viewBox='0 0 48 24'%3E%3Cg fill='none' stroke='%23b3262e' stroke-opacity='.17'%3E%3Cg%3E%3Ccircle cx='0' cy='12' r='12'/%3E%3Ccircle cx='0' cy='12' r='8'/%3E%3Ccircle cx='0' cy='12' r='4'/%3E%3Ccircle cx='24' cy='12' r='12'/%3E%3Ccircle cx='24' cy='12' r='8'/%3E%3Ccircle cx='24' cy='12' r='4'/%3E%3Ccircle cx='48' cy='12' r='12'/%3E%3Ccircle cx='48' cy='12' r='8'/%3E%3Ccircle cx='48' cy='12' r='4'/%3E%3C/g%3E%3Cg fill='%23f6f3ec'%3E%3Ccircle cx='12' cy='24' r='12'/%3E%3Ccircle cx='36' cy='24' r='12'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='12' cy='24' r='8'/%3E%3Ccircle cx='12' cy='24' r='4'/%3E%3Ccircle cx='36' cy='24' r='8'/%3E%3Ccircle cx='36' cy='24' r='4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  --seigaiha-red: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='24' viewBox='0 0 48 24'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='.22'%3E%3Cg%3E%3Ccircle cx='0' cy='12' r='12'/%3E%3Ccircle cx='0' cy='12' r='8'/%3E%3Ccircle cx='0' cy='12' r='4'/%3E%3Ccircle cx='24' cy='12' r='12'/%3E%3Ccircle cx='24' cy='12' r='8'/%3E%3Ccircle cx='24' cy='12' r='4'/%3E%3Ccircle cx='48' cy='12' r='12'/%3E%3Ccircle cx='48' cy='12' r='8'/%3E%3Ccircle cx='48' cy='12' r='4'/%3E%3C/g%3E%3Cg fill='%23a3222a'%3E%3Ccircle cx='12' cy='24' r='12'/%3E%3Ccircle cx='36' cy='24' r='12'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='12' cy='24' r='8'/%3E%3Ccircle cx='12' cy='24' r='4'/%3E%3Ccircle cx='36' cy='24' r='8'/%3E%3Ccircle cx='36' cy='24' r='4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--washi);
+  color: var(--sumi);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+h1 { font-size: 1.85rem; }
+h2 { font-size: 1.3rem; }
+h3 { font-size: 1.08rem; }
+p { margin: 0; }
+a { color: var(--beni-dark); text-underline-offset: 3px; }
+button { font: inherit; color: inherit; }
+img, svg { max-width: 100%; }
+small, .small { font-size: 0.86rem; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+.nowrap { white-space: nowrap; }
+.hidden { display: none !important; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: var(--r-sm);
+}
+
+.icon {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.2em;
+}
+
+/* ---------- Kerangka aplikasi ---------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-right: 1px solid var(--line);
+  padding: 22px 14px 14px;
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 22px;
+  text-decoration: none;
+  color: var(--sumi);
+}
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--beni);
+  flex: none;
+  box-shadow: 0 0 0 4px var(--beni-tint);
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.12rem;
+  line-height: 1.15;
+}
+.brand-sub { font-size: 0.78rem; color: var(--muted); font-family: var(--font-body); font-weight: 400; }
+
+.nav { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--r-md);
+  color: var(--ink-2);
+  text-decoration: none;
+  font-weight: 500;
+}
+.nav a:hover { background: var(--washi); }
+.nav a[aria-current='page'] { background: var(--sand); color: var(--sumi); font-weight: 700; }
+.nav a[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--beni);
+}
+.nav-label { margin: 18px 16px 6px; font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+
+.sidebar-foot { margin-top: auto; padding-top: 18px; }
+.sidebar-wave {
+  height: 54px;
+  margin: 0 -14px 14px;
+  background: var(--seigaiha-paper);
+  background-size: 48px 24px;
+  opacity: 0.9;
+  -webkit-mask-image: linear-gradient(to top, #000, transparent);
+  mask-image: linear-gradient(to top, #000, transparent);
+}
+.usercard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: var(--washi);
+  border: 1px solid var(--line-soft);
+}
+.usercard-text { min-width: 0; flex: 1; }
+.usercard-name { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usercard-role { font-size: 0.78rem; color: var(--muted); }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.topbar { display: none; }
+.view {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 34px 36px 56px;
+  flex: 1;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+}
+.page-head p { color: var(--muted); margin-top: 4px; max-width: 62ch; }
+.page-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.tabbar { display: none; }
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  background: var(--sakura);
+  color: var(--beni-dark);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.avatar-lg { width: 64px; height: 64px; font-size: 1.5rem; }
+
+/* ---------- Halaman login ---------- */
+
+.login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+.login-art {
+  position: relative;
+  overflow: hidden;
+  background-color: #a3222a;
+  background-image: var(--seigaiha-red);
+  background-size: 64px 32px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 44px 48px;
+}
+/* Lingkaran matahari (hinomaru) di tengah, kanji merah di dalamnya */
+.login-art::before {
+  content: '';
+  position: absolute;
+  width: min(62%, 430px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--washi);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 14px rgba(246, 243, 236, 0.18);
+}
+.login-art > * { position: relative; }
+.login-wordmark { font-family: var(--font-display); font-size: 1.15rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.login-kanji {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2.2rem, 4.4vw, 3.6rem);
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  color: var(--beni);
+  margin: 0;
+}
+.login-art-foot { max-width: 34ch; font-size: 0.95rem; opacity: 0.92; }
+
+.login-panel {
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
+  background: var(--washi);
+}
+.login-box { width: 100%; max-width: 380px; }
+.login-box h1 { font-size: 1.7rem; margin-bottom: 6px; }
+.login-box > p { color: var(--muted); margin-bottom: 26px; }
+.login-note { margin-top: 22px; font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+
+/* ---------- Layar penuh / pemuatan ---------- */
+
+.boot {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid var(--line);
+  border-top-color: var(--beni);
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

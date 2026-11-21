@@ -1,0 +1,13 @@
+# Salin file ini menjadi ".dev.vars" (tanpa .example) untuk pengembangan lokal.
+# FILE .dev.vars TIDAK BOLEH di-upload ke GitHub (sudah ada di .gitignore).
+
+# Isi dengan SELURUH isi file JSON service account, dijadikan SATU baris.
+# (Firebase Console > Project settings > Service accounts > Generate new private key)
+FIREBASE_SERVICE_ACCOUNT={"type":"service_account","project_id":"web-jc-nekat","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"firebase-adminsdk-xxxx@web-jc-nekat.iam.gserviceaccount.com"}
+
+# Rahasia acak minimal 32 karakter untuk menandatangani QR. Buat dengan:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+QR_SECRET=ganti-dengan-string-acak-panjang
+
+# Hanya untuk pengembangan lokal (menimpa nilai di wrangler.toml bila perlu)
+# FIREBASE_API_KEY=AIza...

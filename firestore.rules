@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// ============================================================================
+// Japanese Club Management System - Firestore Security Rules
+//
+// PRINSIP: browser TIDAK PERNAH membaca/menulis Firestore secara langsung.
+// Seluruh akses data lewat API (Cloudflare Worker) yang memakai service account
+// (service account melewati rules ini, jadi rules ini hanya mengunci jalur browser).
+//
+// Hasilnya: walaupun seseorang mengambil konfigurasi Firebase dari website dan
+// mencoba mengakses Firestore langsung, semua permintaan DITOLAK.
+//
+// Koleksi yang dipakai aplikasi (semua dikunci):
+//   users, usernames, meetings, attendance, announcements, audit, settings
+// ============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Tidak ada akses baca/tulis dari klien untuk koleksi apa pun.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

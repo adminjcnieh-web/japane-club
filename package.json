@@ -1,0 +1,13 @@
+{
+  "name": "japanese-club",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "cd backend && wrangler dev",
+    "deploy": "cd backend && wrangler deploy",
+    "test": "cd backend && node --test test/api.test.js test/scripts.test.js",
+    "test:e2e": "node backend/test/e2e/e2e.mjs",
+    "bootstrap-admin": "node scripts/bootstrap-admin.mjs --key=./service-account.json"
+  }
+}

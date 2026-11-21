@@ -1,0 +1,106 @@
+/* Responsif: tablet, HP besar, HP kecil. Navigasi samping berubah jadi navigasi bawah. */
+
+@media (max-width: 1100px) {
+  .grid-main, .stage { grid-template-columns: minmax(0, 1fr); }
+  .view { padding: 28px 24px 48px; }
+}
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { display: none; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    position: sticky; top: 0; z-index: 30;
+    padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top));
+    background: rgba(252, 251, 248, 0.94);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar .brand { padding: 0; }
+  .topbar .brand-mark { width: 28px; height: 28px; box-shadow: 0 0 0 3px var(--beni-tint); }
+
+  .view { padding: 20px 16px calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 1.55rem; }
+
+  .tabbar {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--paper); border-top: 1px solid var(--line);
+  }
+  .tabbar a, .tabbar button {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    border: 0; background: none; text-decoration: none; color: var(--muted);
+    font-size: 0.72rem; font-weight: 700; cursor: pointer; min-width: 0; padding: 6px 2px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tabbar .icon { width: 23px; height: 23px; }
+  .tabbar [aria-current='page'] { color: var(--beni); }
+  .tabbar .scan-tab span.disc {
+    display: grid; place-items: center; width: 46px; height: 46px; margin-top: -18px;
+    border-radius: 50%; background: var(--beni); color: #fff; box-shadow: 0 0 0 5px var(--paper), 0 6px 14px rgba(179, 38, 46, 0.35);
+  }
+  .tabbar .scan-tab[aria-current='page'] span.disc { background: var(--beni-dark); }
+
+  #toast-root { bottom: calc(var(--tabbar-h) + 16px + env(safe-area-inset-bottom)); right: 12px; left: 12px; width: auto; }
+
+  /* Login */
+  .login { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .login-art { padding: 26px 24px 30px; min-height: 0; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
+  .login-art::before { width: 150px; height: 150px; left: auto; right: -34px; top: 50%; transform: translateY(-50%); box-shadow: 0 0 0 8px rgba(246, 243, 236, 0.18); }
+  .login-kanji { position: relative; left: auto; top: auto; transform: none; writing-mode: horizontal-tb; font-size: 1.7rem; letter-spacing: 0.14em; margin: 0 28px 0 0; }
+  .login-art-foot { display: none; }
+  .login-panel { align-items: start; padding-top: 28px; }
+}
+
+@media (max-width: 720px) {
+  .grid-2, .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ledger-item { border-left: 0; border-top: 1px solid var(--line); padding: 14px 16px; }
+  .ledger-item:nth-child(-n + 2) { border-top: 0; }
+  .ledger-item:nth-child(even) { border-left: 1px solid var(--line); }
+  .ledger-value { font-size: 1.7rem; }
+  .panel-head { padding: 14px 16px 0; }
+  .panel-body { padding: 12px 16px 16px; }
+  .page-head { margin-bottom: 18px; }
+  .page-actions { width: 100%; }
+  .page-actions .btn { flex: 1; }
+  .qr-card { padding: 18px 14px 50px; }
+  .qr-frame { padding: 12px; }
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .kv dt { margin-top: 10px; }
+
+  /* Tabel menjadi daftar kartu di layar kecil */
+  .table.stackable thead { display: none; }
+  .table.stackable, .table.stackable tbody, .table.stackable tr, .table.stackable td { display: block; width: 100%; }
+  .table.stackable tr { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .table.stackable tbody tr:last-child { border-bottom: 0; }
+  .table.stackable td { padding: 3px 0; border: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: right; }
+  .table.stackable td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 0.84rem; text-align: left; flex: none; }
+  .table.stackable td.cell-primary { display: block; text-align: left; padding-bottom: 6px; }
+  .table.stackable td.cell-primary::before { display: none; }
+  .table.stackable td.cell-actions { justify-content: flex-end; padding-top: 8px; }
+  .toolbar .select { flex: 1 1 140px; }
+
+  /* Modal menjadi lembar dari bawah */
+  .overlay { align-items: end; padding: 0; }
+  .modal { max-width: none; max-height: 92dvh; border-radius: 18px 18px 0 0; animation: sheet 0.22s ease-out; }
+  .modal-foot { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .modal-foot .btn { flex: 1; }
+  @keyframes sheet { from { transform: translateY(40px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+}
+
+@media (max-width: 380px) {
+  body { font-size: 14.5px; }
+  .mini-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ring { width: 112px; height: 112px; }
+  .tabbar a, .tabbar button { font-size: 0.68rem; }
+}
+
+@media print {
+  .sidebar, .topbar, .tabbar, .page-actions, .toolbar { display: none !important; }
+  .shell { display: block; }
+  .view { padding: 0; max-width: none; }
+}
