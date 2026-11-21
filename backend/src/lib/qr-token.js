@@ -9,7 +9,7 @@
 // Rahasia QR_SECRET hanya ada di server, sehingga browser tidak bisa memalsukan token.
 import { HttpError } from './http.js';
 
-export const WINDOW_SECONDS = 30;
+export const WINDOW_SECONDS = 5;
 const GRACE_WINDOWS = 1;
 const enc = new TextEncoder();
 

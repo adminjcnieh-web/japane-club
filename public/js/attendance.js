@@ -171,7 +171,7 @@ export async function qrStageView({ container, params, isStale }) {
     const timerEl = container.querySelector('#qr-timer');
     if (!timerEl || !state.open) return;
     const left = Math.max(0, Math.ceil((state.expiresAt - serverNow()) / 1000));
-    const frac = Math.max(0, Math.min(1, (state.expiresAt - serverNow()) / 30000));
+    const frac = Math.max(0, Math.min(1, (state.expiresAt - serverNow()) / 5000));
     timerEl.innerHTML = `<div class="timer-ring"><svg viewBox="0 0 52 52" aria-hidden="true"><circle class="track" cx="26" cy="26" r="${R}" fill="none" stroke-width="5"/><circle class="bar" cx="26" cy="26" r="${R}" fill="none" stroke-width="5" stroke-dasharray="${CIRC}" stroke-dashoffset="${CIRC * (1 - frac)}"/></svg><span>${left}</span></div><span class="muted small">QR berikutnya dalam ${left} detik</span>`;
   }
 
