@@ -66,7 +66,7 @@ jobs:
               appName: "Japanese Club",
               webDir: "www",
               server: { url: process.env.APP_URL, cleartext: false, allowNavigation: [host] },
-              android: { allowMixedContent: false }
+              android: { allowMixedContent: false, webContentsDebuggingEnabled: false }
             }, null, 2));
           '
 
@@ -74,17 +74,72 @@ jobs:
         working-directory: apk
         run: |
           npx cap add android
-          # Izin kamera untuk scan QR
           MANIFEST=android/app/src/main/AndroidManifest.xml
+          # Izin kamera untuk scan QR
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />\n    <application#' "$MANIFEST"
-          grep -n "CAMERA" "$MANIFEST"
+          # Matikan backup data aplikasi
+          sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$MANIFEST"
+          grep -n "CAMERA\|allowBackup" "$MANIFEST"
+
+      - name: Blokir screenshot dan rekam layar (FLAG_SECURE)
+        working-directory: apk
+        run: |
+          mkdir -p android/app/src/main/java/id/japaneseclub/app
+          cat > android/app/src/main/java/id/japaneseclub/app/MainActivity.java <<'JAVA'
+          package id.japaneseclub.app;
+
+          import android.os.Bundle;
+          import android.view.WindowManager;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+              }
+          }
+          JAVA
           npx cap sync android
 
-      - name: Bangun APK
+      - name: Bangun APK rilis (belum bertanda tangan)
         working-directory: apk/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Siapkan kunci tanda tangan
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p out
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "Memakai kunci dari GitHub Secrets"
+            echo "$KS_B64" | base64 -d > keystore.jks
+            echo "$KS_PASS" > out_pass.txt
+          else
+            echo "Belum ada kunci. Membuat kunci baru."
+            openssl rand -hex 12 > out_pass.txt
+            keytool -genkeypair -keystore keystore.jks -alias jclub -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$(cat out_pass.txt)" -keypass "$(cat out_pass.txt)" \
+              -dname "CN=Japanese Club, O=Japanese Club, C=ID"
+            cp keystore.jks out/KUNCI-SIMPAN-BAIK-BAIK.jks
+            cp out_pass.txt out/PASSWORD-KUNCI.txt
+            base64 -w0 keystore.jks > out/KEYSTORE_B64.txt
+            echo "Kunci baru dibuat. Simpan file KUNCI di tempat aman dan jangan dibagikan." > out/BACA-INI.txt
+          fi
+
+      - name: Tanda tangani APK
+        run: |
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          UNSIGNED=apk/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$BT/zipalign" -p -f 4 "$UNSIGNED" aligned.apk
+          "$BT/apksigner" sign --ks keystore.jks --ks-key-alias jclub \
+            --ks-pass "pass:$(cat out_pass.txt)" --out out/JapaneseClub.apk aligned.apk
+          "$BT/apksigner" verify --print-certs out/JapaneseClub.apk | head -3
+          rm -f out_pass.txt aligned.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: japanese-club-apk
-          path: apk/android/app/build/outputs/apk/debug/app-debug.apk
+          path: out/
+          retention-days: 7
