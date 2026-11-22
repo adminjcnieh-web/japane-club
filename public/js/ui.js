@@ -113,7 +113,8 @@ export function openModal({ title, html = '', wide = false, footer = [], onClose
     },
     clearError() { body.querySelector('.form-error')?.remove(); },
   };
-  setTimeout(() => (modal.querySelector('input:not([type=hidden]), select, textarea') || buttons[buttons.length - 1] || modal.querySelector('[data-close]'))?.focus(), 30);
+  // fokus awal ke kolom pertama, kecuali pengguna sudah mengetuk/mengisi kolom lain (jangan merebut fokus)
+  setTimeout(() => { if (modal.contains(document.activeElement) && document.activeElement !== modal) return; (modal.querySelector('input:not([type=hidden]), select, textarea') || buttons[buttons.length - 1] || modal.querySelector('[data-close]'))?.focus(); }, 30);
   return api;
 }
 

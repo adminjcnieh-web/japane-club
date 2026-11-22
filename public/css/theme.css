@@ -5,6 +5,8 @@
    ========================================================================== */
 
 :root {
+  /* Huruf Jepang untuk belajar: gothic bulat yang jelas dan normal (bukan mincho) */
+  --font-jp: 'Zen Maru Gothic', 'Noto Sans JP', 'Hiragino Maru Gothic ProN', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', 'Noto Sans CJK JP', sans-serif;
   --washi: #f8f3e8;
   --paper: #fffcf5;
   --sumi: #1c2441;
