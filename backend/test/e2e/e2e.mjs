@@ -66,6 +66,8 @@ async function newPage(browser, { width = 1280, height = 800, mobile = false, la
     hasTouch: mobile,
     permissions: [],
   });
+  // musik dimatikan di tes biasa supaya CPU runner tidak terbebani; tes musik memakai label 'music*'
+  if (!label.startsWith('music')) await ctx.addInitScript((k) => { try { if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ autoplay: false })); } catch {} }, 'jcms.music.v1');
   const page = await ctx.newPage();
   page.setDefaultTimeout(20000);
   (globalThis.__pages = globalThis.__pages || []).push(page);
@@ -266,7 +268,12 @@ await step('admin membuat pengurus dengan izin, lalu pengurus bisa login', async
   await pAdmin.waitForSelector('#perm-box:not(.hidden)');
   await pAdmin.check('input[name=perm_announce]');
   await pAdmin.click('.modal-foot .btn-primary');
-  await pAdmin.waitForSelector('#modal-form', { state: 'detached' });
+  try { await pAdmin.waitForSelector('#modal-form', { state: 'detached', timeout: 8000 }); }
+  catch (e) {
+    console.log('        [diagnosa modal] ' + (await pAdmin.locator('.modal').innerText().catch(() => '?')).replace(/\n+/g, ' | ').slice(0, 400));
+    console.log('        [diagnosa api] ' + JSON.stringify(srv.apiLog.slice(-4)));
+    throw e;
+  }
   const uid = fake.getDoc('usernames/gita').uid;
   const u = fake.getDoc(`users/${uid}`);
   assert.equal(u.role, 'officer');
@@ -569,11 +576,14 @@ await step('sesi: akun dinonaktifkan saat login -> pengguna dikeluarkan dengan p
   await loginOk(m, 'mem2');
   const adminTok = await apiLogin('admin1');
   await callApi('POST', '/api/members/uidMem00002/active', adminTok, { active: false });
-  await m.goto(URL_ + '/#/schedule');
-  await m.reload();
-  await m.waitForSelector('#login-form');
-  assert.match(await m.locator('.form-error').innerText(), /dinonaktifkan/);
-  await callApi('POST', '/api/members/uidMem00002/active', adminTok, { active: true });
+  try {
+    await m.reload();
+    await m.waitForSelector('#login-form');
+    await m.waitForSelector('.form-error');
+    assert.match(await m.locator('.form-error').innerText(), /dinonaktifkan/);
+  } finally {
+    await callApi('POST', '/api/members/uidMem00002/active', adminTok, { active: true });
+  }
   await m.context().close();
 });
 await step('token kedaluwarsa diperbarui otomatis (refresh) tanpa logout', async () => {
