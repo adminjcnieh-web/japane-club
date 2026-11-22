@@ -1,6 +1,6 @@
 # Japanese Club Management System
 
-Website manajemen ekstrakurikuler Japanese Club: absensi dengan **QR dinamis** (berganti tiap 30 detik), data anggota, pertemuan, pengumuman, jadwal, dan laporan Excel. Dibuka lewat browser di HP maupun laptop. Bukan aplikasi Android, tanpa PWA.
+Website manajemen ekstrakurikuler Japanese Club: absensi dengan **QR dinamis** (berganti tiap 5 detik), data anggota, pertemuan, pengumuman, jadwal, dan laporan Excel. Dibuka lewat browser di HP maupun laptop. Bisa dibungkus jadi APK (lihat bagian 8c).
 
 > Panduan ini ditulis untuk pemula. Ikuti urutannya dari atas ke bawah. Total waktu sekitar 30-45 menit.
 
@@ -156,10 +156,35 @@ Pembaruan berikutnya: ubah file lalu jalankan `npx wrangler deploy` lagi.
 3. Status otomatis **Hadir**, atau **Terlambat** jika lewat batas menit yang diatur. Izin/Sakit/Alfa diinput pengurus yang berizin.
 4. Pengurus menekan **Tutup sesi**: QR langsung tidak berlaku dan anggota aktif yang belum tercatat ditandai **Alfa** (masih bisa diubah).
 
-**Keamanan QR:** token berganti tiap 30 detik, ditandatangani rahasia server, berlaku maksimal sekitar 60 detik, hanya untuk sesi yang sedang dibuka. Foto QR lama tidak berguna. Satu anggota hanya bisa punya satu catatan per pertemuan (dijamin oleh database, bukan hanya oleh tampilan).
+**Keamanan QR:** token berganti tiap **5 detik**, ditandatangani rahasia server, berlaku maksimal sekitar 10-15 detik, hanya untuk sesi yang sedang dibuka. Foto QR lama tidak berguna. Satu anggota hanya bisa punya satu catatan per pertemuan (dijamin oleh database, bukan hanya oleh tampilan).
 
 **Lupa password:** admin membuka detail anggota → **Reset password**.
 **Anggota keluar:** jangan dihapus; **Nonaktifkan** supaya riwayat absensi tetap aman.
+
+---
+
+## 8b. Fitur baru di versi ini
+
+| Fitur | Cara pakai |
+|---|---|
+| **Learning Center** (menu *Belajar*) | 7 kategori: Hiragana, Katakana, Kanji, Kosakata, Bunpou, Percakapan, Membaca. Level dibuka berurutan (lulus level 1 baru level 2 terbuka). Ada bar progres, nyawa, umpan balik tiap soal, penjelasan, dan halaman hasil. Jumlah nyawa diatur admin di **Pengaturan klub**. Isi materi ada di `public/js/learn/data.js`. |
+| **Foto profil** | Menu **Profil saya → Ganti foto**. Pilih foto, geser dan perbesar untuk memotong, lalu simpan. Foto otomatis dikecilkan (256 px) dan disimpan di Firestore (koleksi `avatars`), bukan di dokumen anggota. Tanpa foto, tampil avatar inisial. Anggota hanya bisa mengubah fotonya sendiri; admin bisa menghapus foto anggota di halaman detail anggota. |
+| **Beranda baru** | Sapaan sesuai jam (WIB), foto, ringkasan kehadiran, progres belajar, tombol *Lanjut belajar*, jadwal, dan *Kosakata hari ini*. |
+| **Musik latar** | Pemutar mini di kanan bawah (di HP: pil kecil di atas menu bawah). Putar/jeda, lagu berikut/sebelumnya, volume (awal 8%), bisu, sembunyikan. Musik dibuat langsung oleh browser (lo-fi dan suasana rumah teh, orisinal, tanpa file audio). Jika browser memblokir autoplay, musik mulai setelah sentuhan/klik pertama. Pengaturannya diingat. |
+| **Hapus pertemuan** (admin) | Tombol **Hapus** di detail pertemuan: tampil nama, tanggal, dan dampaknya (berapa catatan absensi). Pertemuan masuk **Arsip** (bisa dipulihkan). **Hapus permanen** harus mengetik nama pertemuan. Semua tercatat di log aktivitas. |
+| **Excel baru** | Menu **Laporan**: filter bulan/tahun, rentang tanggal, dan anggota. File berisi 3 sheet: *Ringkasan Anggota*, *Riwayat Absensi*, *Rekap Per Pertemuan*, lengkap dengan rumus, warna status, dan filter. |
+| **Absensi hanya lewat APK** | Scan absensi hanya jalan di aplikasi (APK). Di browser biasa halaman scan memberi tahu untuk memakai aplikasi, dan server menolak (403 `app_required`). Tidak ada lagi unggah/foto QR, jadi QR tidak bisa dititipkan lewat foto. Lihat bagian 8c. |
+
+### Koleksi Firestore baru (dibuat otomatis, tidak perlu setup)
+- `avatars/{uid}`: foto profil kecil.
+- `learning/{uid}`: progres belajar tiap anggota.
+- Field baru: `deletedAt` di pertemuan (hapus lembut), `avatarVer` di anggota.
+
+### 8c. Catatan konversi ke APK
+- Aplikasi APK harus meminta izin `CAMERA` (Android) dan mengizinkan WebView memberi izin kamera ke halaman (`onPermissionRequest`). Tanpa ini, tombol *Mulai kamera* akan gagal walau HP sudah memberi izin.
+- APK menandai dirinya di User-Agent dengan `JapaneseClubApp/1.0`. Server memakai tanda ini untuk menolak absensi dari browser biasa. Untuk uji coba lewat browser (pengembangan), set variabel `ALLOW_WEB_SCAN=1`.
+- Batas yang jujur: tanda User-Agent bisa dipalsukan oleh orang yang paham teknis. Pengamannya yang utama tetap QR yang berganti tiap 5 detik. Pemindaian layar HP lain secara langsung lewat kamera APK masih mungkin, hanya saja QR-nya cepat kedaluwarsa.
+- **Unduh laporan Excel di APK:** file disimpan lalu muncul menu Bagikan Android (pilih Simpan ke File/Drive, atau kirim lewat WhatsApp). Ini memakai plugin Filesystem dan Share yang ditambahkan otomatis oleh workflow `build-apk.yml`.
 
 ---
 
@@ -184,8 +209,8 @@ Lihat **`docs/HASIL-PENGUJIAN.md`** untuk daftar lengkap dan jujur (apa yang diu
 Menjalankan sendiri:
 ```bash
 cd backend
-node --test test/api.test.js test/scripts.test.js        # 40 tes API & keamanan
-node test/e2e/e2e.mjs                                    # 41 skenario browser (butuh Playwright + python3 + OpenCV)
+node --test test/api.test.js test/scripts.test.js        # 46 tes API & keamanan
+node test/e2e/e2e.mjs                                    # skenario browser (butuh Playwright + python3 + OpenCV)
 ```
 
 ---

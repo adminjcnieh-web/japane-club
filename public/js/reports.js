@@ -1,7 +1,7 @@
 // Laporan absensi: bulanan, per pertemuan, per anggota + ekspor Excel (XLSX) memakai ExcelJS.
 import * as api from './api.js';
 import { icon } from './icons.js';
-import { esc, STATUS_KEYS, STATUS_LABEL, fmtDateShort, fmtDateTime, loadScript, downloadBlob, todayStr, pct } from './utils.js';
+import { esc, STATUS_KEYS, STATUS_LABEL, fmtDateShort, fmtDateTime, loadScript, downloadBlob, isApp, todayStr, pct } from './utils.js';
 import { LIBS } from './config.js';
 import { pageHead, emptyState, errorState, loadingBlock, statusBadge, toast, withBusy } from './ui.js';
 
@@ -377,9 +377,9 @@ export async function reportsView({ container, user, isStale }) {
           const meta = metaNow();
           const wb = await buildWorkbook(data, meta);
           const buf = await wb.xlsx.writeBuffer();
-          downloadBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), reportFilename(meta));
+          await downloadBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), reportFilename(meta));
         });
-        toast('File Excel berhasil dibuat.');
+        toast(isApp() ? 'Laporan siap. Pilih Simpan ke File atau kirim lewat menu yang muncul.' : 'File Excel berhasil dibuat.');
       } catch (err) { toast(err.message || 'Gagal membuat file Excel.', 'error'); }
     });
   }

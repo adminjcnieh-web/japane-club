@@ -13,6 +13,12 @@ const CONFLICT_CODES = ['ALREADY_EXISTS', 'FAILED_PRECONDITION', 'ABORTED'];
 /** Anggota memindai QR. Identitas SELALU diambil dari ID Token, bukan dari isi request. */
 export async function scan(ctx) {
   const { uid, user } = ctx.auth;
+  // Absensi hanya lewat aplikasi (APK). Aplikasi menambahkan "JapaneseClubApp/" ke User-Agent.
+  // Catatan: ini penghalang untuk pemakaian biasa, bukan jaminan mutlak (User-Agent bisa dipalsukan oleh orang teknis).
+  const ua = ctx.request.headers.get('user-agent') || '';
+  if (ctx.env.ALLOW_WEB_SCAN !== '1' && !/JapaneseClubApp\//.test(ua)) {
+    throw new HttpError(403, 'Absensi hanya bisa dilakukan lewat aplikasi Japanese Club (APK).', 'app_required');
+  }
   rateLimit(`scan:${uid}`, 15, 60000);
   const body = await ctx.json();
   const token = v.str(body.token, { name: 'Token QR', min: 10, max: 200 });

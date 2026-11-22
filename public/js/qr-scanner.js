@@ -1,7 +1,7 @@
 // Pemindai QR untuk anggota: kamera perangkat, izin kamera, dan hasil absensi.
 import * as api from './api.js';
 import { icon } from './icons.js';
-import { esc, loadScript, STATUS_LABEL } from './utils.js';
+import { esc, loadScript, STATUS_LABEL, isApp } from './utils.js';
 import { LIBS } from './config.js';
 import { pageHead, statusBadge } from './ui.js';
 
@@ -13,6 +13,7 @@ const ERRORS_BY_CODE = {
   rate_limited: { title: 'Terlalu banyak percobaan', text: 'Tunggu sebentar lalu coba lagi.' },
   not_tracked: { title: 'Akunmu tidak ikut absensi', text: 'Akun ini tidak termasuk daftar peserta absensi. Hubungi admin bila ini keliru.' },
   not_found: { title: 'Pertemuan tidak ditemukan', text: 'Pertemuan ini sudah dihapus atau QR-nya tidak berlaku. Hubungi pengurus.' },
+  app_required: { title: 'Gunakan aplikasi Japanese Club', text: 'Absensi hanya bisa dilakukan lewat aplikasi Japanese Club (APK), bukan lewat browser.' },
   network: { title: 'Tidak ada koneksi', text: 'Periksa internetmu lalu pindai lagi.' },
 };
 
@@ -27,7 +28,7 @@ export function inAppWebView() {
 
 function cameraProblem(e) {
   if (inAppWebView() && (e?.name === 'NotAllowedError' || e?.name === 'SecurityError' || !navigator.mediaDevices?.getUserMedia)) {
-    return { title: 'Aplikasi belum diberi izin kamera', text: 'Kamu membuka lewat aplikasi. Buka Pengaturan HP > Aplikasi > Japanese Club > Izin > Kamera > Izinkan, lalu buka aplikasi lagi. Atau pakai tombol Foto QR / Buka di browser di bawah.' };
+    return { title: 'Aplikasi belum diberi izin kamera', text: 'Kamu membuka lewat aplikasi. Buka Pengaturan HP > Aplikasi > Japanese Club > Izin > Kamera > Izinkan, lalu buka aplikasi lagi.' };
   }
   if (!navigator.mediaDevices?.getUserMedia) {
     return { title: 'Kamera tidak bisa dipakai di sini', text: 'Browser ini tidak mendukung kamera, atau halaman tidak dibuka lewat HTTPS. Buka website lewat alamat https:// di Chrome atau Safari.' };
@@ -56,6 +57,11 @@ export async function scannerView({ container, isStale }) {
     <div class="scanner"><div class="panel"><div class="panel-body" id="sc-body"></div></div></div>`;
   const body = container.querySelector('#sc-body');
 
+  if (!isApp()) {
+    body.innerHTML = `<div class="alert alert-warn" role="alert">${icon('alert')}<div><strong>Absensi hanya lewat aplikasi</strong><p style="margin-top:4px">Untuk mencegah titip absen dengan foto QR, scan absensi hanya bisa dilakukan dari aplikasi Japanese Club (APK). Buka aplikasinya di HP, lalu masuk ke menu Scan absensi.</p></div></div>`;
+    return () => {};
+  }
+
   function stop() {
     active = false;
     cancelAnimationFrame(raf);
@@ -71,7 +77,6 @@ export async function scannerView({ container, isStale }) {
         <li>Tekan <strong>Mulai kamera</strong> dan izinkan akses kamera.</li>
         <li>Arahkan kamera ke QR sampai muncul tanda berhasil.</li>
       </ol>
-      ${inAppWebView() ? `<div class="alert alert-info" style="margin-bottom:14px">${icon('info')}<div class="small">Kamu membuka lewat aplikasi. Jika kamera tidak mau menyala, pakai <strong>Foto QR</strong> atau <strong>Buka di browser</strong>.</div></div>` : ''}
       <button class="btn btn-primary btn-block" id="sc-start" style="min-height:50px">${icon('camera')} Mulai kamera</button>
       ${fallbackButtons()}`;
     body.querySelector('#sc-start').addEventListener('click', start);
@@ -79,17 +84,12 @@ export async function scannerView({ container, isStale }) {
   }
 
   function fallbackButtons() {
-    return `<div class="sc-alt">
-      <label class="btn btn-block" for="sc-photo" style="margin-top:10px">${icon('camera')} Foto QR (pakai kamera HP)</label>
-      <input type="file" id="sc-photo" accept="image/*" capture="environment" class="sr-only" />
-      <div class="row" style="margin-top:10px;justify-content:space-between">
-        <button class="btn btn-quiet btn-sm" id="sc-check" type="button">Cek kamera</button>
-        <a class="btn btn-quiet btn-sm" id="sc-browser" href="${esc(location.href)}" target="_blank" rel="noopener">Buka di browser</a>
-      </div></div>`;
+    return `<div class="sc-alt"><div class="row" style="margin-top:10px;justify-content:center">
+      <button class="btn btn-quiet btn-sm" id="sc-check" type="button">Cek kamera</button>
+    </div></div>`;
   }
 
   function wireFallbacks() {
-    body.querySelector('#sc-photo')?.addEventListener('change', onPhoto);
     body.querySelector('#sc-check')?.addEventListener('click', checkCamera);
   }
 
@@ -106,43 +106,6 @@ export async function scannerView({ container, isStale }) {
     lines.push(['Dibuka lewat aplikasi (WebView)', null]);
     lines[lines.length - 1][1] = !inAppWebView() ? true : 'info';
     showIdle(`<div class="panel-soft" style="margin-bottom:14px"><strong>Hasil cek kamera</strong><ul class="plain-list">${lines.map(([t, ok]) => `<li>${ok === true ? 'OK' : ok === 'info' ? 'Ya' : 'Perlu dicek'} &middot; ${esc(t)}</li>`).join('')}</ul></div>`);
-  }
-
-  async function onPhoto(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    body.innerHTML = `<div class="loading-line"><span class="spinner"></span>Membaca QR dari foto...</div>`;
-    try {
-      const text = await decodeFile(file);
-      if (!text || !/^JC1\.[A-Za-z0-9]+\.\d+\.[A-Za-z0-9_-]+$/.test(text)) {
-        showProblem({ title: 'QR tidak terbaca di foto', text: 'Pastikan seluruh QR terlihat jelas dan tidak buram, lalu foto ulang. Karena QR berganti tiap 5 detik, ambil foto dan kirim dengan cepat.' }, { retry: false });
-        body.insertAdjacentHTML('beforeend', fallbackButtons());
-        wireFallbacks();
-        return;
-      }
-      await submit(text);
-    } catch (err) {
-      showProblem({ title: 'Foto tidak bisa dibaca', text: err.message || 'Coba foto ulang.' }, { retry: false });
-    }
-  }
-
-  async function decodeFile(file) {
-    const bmp = await createImageBitmap(file).catch(() => null);
-    if (!bmp) throw new Error('File bukan gambar yang valid.');
-    if ('BarcodeDetector' in window) {
-      try {
-        const d = new window.BarcodeDetector({ formats: ['qr_code'] });
-        const f = await d.detect(bmp);
-        if (f[0]?.rawValue) return f[0].rawValue;
-      } catch { /* lanjut jsQR */ }
-    }
-    await loadScript(LIBS.jsqr);
-    const scale = Math.min(1, 1000 / Math.max(bmp.width, bmp.height));
-    canvas.width = Math.round(bmp.width * scale);
-    canvas.height = Math.round(bmp.height * scale);
-    ctx2d.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    const img = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
-    return window.jsQR?.(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' })?.data || null;
   }
 
   function showProblem(p, { retry = true } = {}) {

@@ -60,6 +60,8 @@ const pageErrors = [];
 
 async function newPage(browser, { width = 1280, height = 800, mobile = false, label = '' } = {}) {
   const ctx = await browser.newContext({
+    // Aplikasi (APK) menandai dirinya di User-Agent; tes meniru itu kecuali label 'web*'.
+    ...(label.startsWith('web') ? {} : { userAgent: `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${browser.version()} Safari/537.36 JapaneseClubApp/1.0` }),
     viewport: { width, height },
     deviceScaleFactor: 1,
     isMobile: mobile,
@@ -68,6 +70,7 @@ async function newPage(browser, { width = 1280, height = 800, mobile = false, la
   });
   // musik dimatikan di tes biasa supaya CPU runner tidak terbebani; tes musik memakai label 'music*'
   if (!label.startsWith('music')) await ctx.addInitScript((k) => { try { if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ autoplay: false })); } catch {} }, 'jcms.music.v1');
+  if (!label.startsWith('intro')) await ctx.addInitScript(() => { try { sessionStorage.setItem('jc.intro', '1'); } catch {} });
   const page = await ctx.newPage();
   page.setDefaultTimeout(20000);
   (globalThis.__pages = globalThis.__pages || []).push(page);
@@ -203,6 +206,7 @@ await step('admin menambah anggota lewat modal; muncul di daftar', async () => {
   await pAdmin.waitForSelector('#modal-form', { state: 'detached' });
   assert.match(await toastText(pAdmin), /eko\.baru berhasil dibuat/);
   await pAdmin.waitForSelector('text=Eko Baru');
+  await pAdmin.waitForSelector('.modal', { state: 'detached' }); // tunggu modal lama benar-benar hilang
   assert.ok(fake.getDoc('usernames/eko.baru'));
 });
 await step('username duplikat ditolak dengan pesan di dalam modal', async () => {
@@ -212,7 +216,13 @@ await step('username duplikat ditolak dengan pesan di dalam modal', async () => 
   await pAdmin.fill('#m-user', 'EKO.BARU');
   await pAdmin.fill('#m-pass', 'Passw0rd!');
   await pAdmin.click('.modal-foot .btn-primary');
-  await pAdmin.waitForSelector('.modal .form-error');
+  try { await pAdmin.waitForSelector('.modal .form-error', { timeout: 8000 }); }
+  catch (e) {
+    console.log('        [diagnosa modal] ' + (await pAdmin.locator('.modal').innerText().catch(() => '?')).replace(/\n+/g, ' | ').slice(0, 300));
+    console.log('        [diagnosa api] ' + JSON.stringify(srv.apiLog.slice(-3)));
+    await shot(pAdmin, 'gagal-duplikat');
+    throw e;
+  }
   assert.match(await pAdmin.locator('.modal .form-error').innerText(), /sudah dipakai/);
   await shot(pAdmin, '03-modal-error-desktop');
   await pAdmin.click('.modal-foot .btn:not(.btn-primary)');
@@ -830,6 +840,67 @@ await step('hapus pertemuan (admin): dialog dampak, arsip, pulihkan', async () =
   await pm.waitForSelector('.modal');
   assert.match(await pm.locator('.modal').innerText(), /Pertemuan Uji Hapus/);
   await shot(pm, '31-delete-dialog');
+  await pm.context().close();
+});
+
+
+await step('animasi pembuka: tampil sekali, menutupi lalu hilang, aplikasi bisa dipakai', async () => {
+  const pm = await newPage(browserNormal, { width: 390, height: 844, mobile: true, label: 'intro' });
+  await pm.goto(URL_ + '/');
+  await pm.waitForSelector('#intro .sun');
+  await pm.waitForTimeout(900);
+  await shot(pm, '32-intro-1');
+  await pm.waitForTimeout(700);
+  await shot(pm, '33-intro-2');
+  await pm.waitForSelector('#intro', { state: 'detached', timeout: 6000 });
+  await pm.waitForSelector('#lg-user');
+  await pm.reload();
+  await pm.waitForSelector('#lg-user');
+  assert.equal(await pm.locator('#intro').count(), 1);
+  assert.equal(await pm.evaluate(() => document.documentElement.classList.contains('intro-on')), false, 'tidak diulang di sesi yang sama');
+  await pm.context().close();
+});
+
+
+await step('scan lewat browser biasa diblokir (harus dari aplikasi), tanpa tombol Foto QR', async () => {
+  const pm = await newPage(browserNormal, { width: 390, height: 844, mobile: true, label: 'web-scan' });
+  await loginOk(pm, 'mem1');
+  await pm.goto(URL_ + '/#/scan');
+  await pm.waitForSelector('text=Absensi hanya lewat aplikasi');
+  assert.equal(await pm.locator('#sc-start').count(), 0, 'tidak ada tombol mulai kamera');
+  assert.equal(await pm.locator('input[type=file]').count(), 0, 'tidak ada unggah foto QR');
+  await shot(pm, '34-scan-browser-diblokir');
+  await pm.context().close();
+});
+
+await step('scan di aplikasi: tidak ada tombol Foto QR / unggah foto', async () => {
+  const pm = await newPage(browserNormal, { width: 390, height: 844, mobile: true, label: 'app-scan' });
+  await loginOk(pm, 'mem1');
+  await pm.goto(URL_ + '/#/scan');
+  await pm.waitForSelector('#sc-start');
+  assert.equal(await pm.locator('input[type=file]').count(), 0);
+  assert.equal(await pm.locator('text=Foto QR').count(), 0);
+  await pm.context().close();
+});
+
+await step('Excel di aplikasi: file disimpan lewat Filesystem lalu menu Bagikan (plugin Capacitor palsu)', async () => {
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'app-excel' });
+  await pm.addInitScript(() => {
+    window.__native = [];
+    window.Capacitor = { nativePromise: async (plugin, method, opts) => { window.__native.push({ plugin, method, path: opts.path, len: (opts.data || '').length, url: opts.url }); return { uri: 'file:///cache/' + (opts.path || '') }; } };
+  });
+  await loginOk(pm, 'admin1');
+  await pm.goto(URL_ + '/#/reports');
+  await pm.waitForSelector('#rp-export');
+  await pm.click('#rp-export');
+  await pm.waitForFunction(() => window.__native.length >= 2, null, { timeout: 15000 });
+  const calls = await pm.evaluate(() => window.__native);
+  assert.equal(calls[0].plugin, 'Filesystem');
+  assert.equal(calls[0].method, 'writeFile');
+  assert.match(calls[0].path, /\.xlsx$/);
+  assert.ok(calls[0].len > 100, 'data base64 terisi');
+  assert.equal(calls[1].plugin, 'Share');
+  assert.match(calls[1].url, /^file:\/\/\/cache\//);
   await pm.context().close();
 });
 

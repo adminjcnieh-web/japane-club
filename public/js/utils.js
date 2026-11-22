@@ -67,7 +67,33 @@ export function loadScript(src) {
   return p;
 }
 
-export function downloadBlob(blob, filename) {
+// Aplikasi (APK) menambahkan "JapaneseClubApp/" ke User-Agent WebView.
+export function isApp() {
+  return /JapaneseClubApp\//.test(navigator.userAgent || '');
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('Gagal membaca file.'));
+    r.readAsDataURL(blob);
+  });
+}
+
+/** Mengunduh file. Di aplikasi (WebView) tautan unduhan biasa tidak jalan, jadi file disimpan lalu dibuka lewat menu Bagikan/Simpan Android. */
+export async function downloadBlob(blob, filename) {
+  const cap = window.Capacitor;
+  if (isApp() && cap && typeof cap.nativePromise === 'function') {
+    const data = await blobToBase64(blob);
+    const saved = await cap.nativePromise('Filesystem', 'writeFile', { path: filename, data, directory: 'CACHE', recursive: true });
+    try {
+      await cap.nativePromise('Share', 'share', { title: filename, text: filename, url: saved.uri, dialogTitle: 'Simpan atau kirim laporan' });
+    } catch (e) {
+      if (!/cancel/i.test(String(e?.message || e))) throw e; // menutup menu Bagikan bukan kesalahan
+    }
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

@@ -16,7 +16,7 @@ let env;
 async function api(method, path, { token, body } = {}) {
   const req = new Request('https://club.test' + path, {
     method,
-    headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
+    headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0 (Linux; Android 14; wv) JapaneseClubApp/1.0', ...(token ? { authorization: 'Bearer ' + token } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const res = await worker.fetch(req, env);
@@ -296,6 +296,23 @@ describe('QR dinamis & absensi', () => {
     const qr = await api('GET', `/api/meetings/${id}/qr`, { token: off });
     const r = await api('POST', '/api/attendance/scan', { token: await login('mem1'), body: { token: qr.data.token } });
     assert.equal(r.data.status, 'terlambat');
+  });
+
+  test('absensi hanya dari aplikasi: tanpa penanda aplikasi ditolak (403 app_required)', async () => {
+    const { off, id } = await openMeeting();
+    await api('POST', `/api/meetings/${id}/open`, { token: off });
+    const mem = await login('mem1');
+    const qr = await api('GET', `/api/meetings/${id}/qr`, { token: off });
+    const web = await worker.fetch(new Request('https://club.test/api/attendance/scan', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': 'Mozilla/5.0 (Linux; Android 14) Chrome/120 Mobile Safari/537.36', authorization: 'Bearer ' + mem },
+      body: JSON.stringify({ token: qr.data.token }),
+    }), env);
+    assert.equal(web.status, 403);
+    assert.equal((await web.json()).error.code, 'app_required');
+    assert.equal(fake.getDoc(`attendance/${id}_uidMem00001`), null, 'tidak tercatat');
+    const ok = await api('POST', '/api/attendance/scan', { token: mem, body: { token: qr.data.token } });
+    assert.equal(ok.status, 200);
   });
 
   test('QR kedaluwarsa ditolak (410), QR jendela sebelumnya masih ditoleransi', async () => {
