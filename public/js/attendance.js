@@ -1,4 +1,4 @@
-// Layar QR dinamis untuk pengurus/admin: QR berganti tiap 30 detik, daftar hadir diperbarui langsung.
+// Layar QR dinamis untuk pengurus/admin: QR berganti tiap 5 detik, daftar hadir diperbarui langsung.
 import * as api from './api.js';
 import { icon } from './icons.js';
 import { esc, fmtDate, fmtTime, loadScript, initials } from './utils.js';
@@ -43,6 +43,7 @@ export async function qrStageView({ container, params, isStale }) {
     open: false,
     token: null,
     expiresAt: 0, // dalam jam server
+    next: null,
     offset: 0, // serverTime - Date.now()
     records: new Map(),
     since: null,
@@ -50,13 +51,14 @@ export async function qrStageView({ container, params, isStale }) {
     lastOk: Date.now(),
     failing: false,
   };
-  let pollTimer = null, tickTimer = null, destroyed = false, fetching = false, renderedToken = null;
+  let pollTimer = null, tickTimer = null, destroyed = false, fetching = false, renderedToken = null, lastTry = 0;
 
   const serverNow = () => Date.now() + state.offset;
 
   async function fetchQr() {
-    if (fetching || destroyed) return;
+    if (fetching || destroyed || Date.now() - lastTry < 1500) return;
     fetching = true;
+    lastTry = Date.now();
     try {
       const q = state.since ? `?since=${encodeURIComponent(state.since)}` : '';
       const r = await api.get(`/api/meetings/${id}/qr${q}`);
@@ -68,6 +70,7 @@ export async function qrStageView({ container, params, isStale }) {
       state.open = r.open;
       state.token = r.token;
       state.expiresAt = r.expiresAt || 0;
+      state.next = r.next || null;
       for (const rec of r.records || []) {
         if (!state.records.has(rec.uid)) state.fresh.add(rec.uid);
         state.records.set(rec.uid, rec);
@@ -99,7 +102,7 @@ export async function qrStageView({ container, params, isStale }) {
           <p class="qr-meta">${esc(fmtDate(m.date))} &middot; ${esc(m.startTime)} - ${esc(m.endTime)} WIB${m.location ? ` &middot; ${esc(m.location)}` : ''}</p>
           <div class="qr-frame" id="qr-frame"></div>
           <div class="qr-timer" id="qr-timer"></div>
-          <p class="small muted" style="margin-top:10px" id="qr-hint">QR berganti otomatis setiap 30 detik. Foto lama tidak akan berlaku.</p>
+          <p class="small muted" style="margin-top:10px" id="qr-hint">QR berganti otomatis setiap 5 detik. Foto lama tidak akan berlaku.</p>
           <div class="page-actions" style="justify-content:center;margin-top:14px">
             <button class="btn btn-sm" id="qr-full">${icon('maximize')} Layar penuh</button>
             <button class="btn btn-sm btn-danger" id="qr-close">Tutup sesi</button>
@@ -147,7 +150,7 @@ export async function qrStageView({ container, params, isStale }) {
       hint.textContent = 'QR tidak berlaku saat sesi tidak dibuka.';
       return;
     }
-    hint.textContent = 'QR berganti otomatis setiap 30 detik. Foto lama tidak akan berlaku.';
+    hint.textContent = 'QR berganti otomatis setiap 5 detik. Foto lama tidak akan berlaku.';
     const stale = serverNow() > state.expiresAt + 2000;
     if (state.token && state.token !== renderedToken) {
       try {
@@ -210,11 +213,19 @@ export async function qrStageView({ container, params, isStale }) {
   // Pembaruan token tepat saat berganti jendela + pemeriksaan daftar hadir berkala.
   tickTimer = setInterval(() => {
     if (!state.open) return;
+    // Ganti token seketika memakai token berikutnya yang sudah dikirim server.
+    if (state.next && serverNow() >= state.expiresAt) {
+      state.token = state.next.token;
+      state.expiresAt = state.next.expiresAt;
+      state.next = null;
+    }
     paintTimer();
     paintQrArea();
-    if (serverNow() >= state.expiresAt - 500) fetchQr();
-  }, 500);
-  pollTimer = setInterval(() => { if (!document.hidden) fetchQr(); }, QR_POLL_MS);
+    // Ambil token baru + daftar hadir sekali per jendela (tiap 5 detik); tidak perlu polling tambahan.
+    if (!state.next && !document.hidden) fetchQr();
+    else if (serverNow() >= state.expiresAt + 1000) fetchQr();
+  }, 250);
+  pollTimer = setInterval(() => { if (!document.hidden && Date.now() - state.lastOk > 12000) fetchQr(); }, QR_POLL_MS);
   const onVisible = () => { if (!document.hidden) fetchQr(); };
   document.addEventListener('visibilitychange', onVisible);
 

@@ -6,16 +6,29 @@ import { LIBS } from './config.js';
 import { pageHead, statusBadge } from './ui.js';
 
 const ERRORS_BY_CODE = {
-  qr_expired: { title: 'QR sudah kedaluwarsa', text: 'QR berganti tiap 30 detik. Arahkan kamera ke QR yang sedang tampil di layar pengurus.' },
+  qr_expired: { title: 'QR sudah kedaluwarsa', text: 'QR berganti tiap 5 detik, jadi pindai QR yang sedang tampil dan jangan pakai foto lama. Arahkan kamera ke layar pengurus.' },
   qr_invalid: { title: 'QR tidak valid', text: 'Pastikan kamu memindai QR absensi Japanese Club dari layar pengurus, bukan foto atau QR lain.' },
   session_closed: { title: 'Sesi absensi sudah ditutup', text: 'Absensi untuk pertemuan ini sudah selesai. Hubungi pengurus bila kamu hadir.' },
   session_not_open: { title: 'Absensi belum dibuka', text: 'Tunggu pengurus membuka sesi absensi, lalu pindai lagi.' },
   rate_limited: { title: 'Terlalu banyak percobaan', text: 'Tunggu sebentar lalu coba lagi.' },
   not_tracked: { title: 'Akunmu tidak ikut absensi', text: 'Akun ini tidak termasuk daftar peserta absensi. Hubungi admin bila ini keliru.' },
+  not_found: { title: 'Pertemuan tidak ditemukan', text: 'Pertemuan ini sudah dihapus atau QR-nya tidak berlaku. Hubungi pengurus.' },
   network: { title: 'Tidak ada koneksi', text: 'Periksa internetmu lalu pindai lagi.' },
 };
 
+// Deteksi WebView (APK hasil konversi, atau browser di dalam aplikasi lain).
+export function inAppWebView() {
+  const ua = navigator.userAgent || '';
+  if (/; wv\)/.test(ua) || /\bwv\b/.test(ua)) return true; // Android WebView
+  if (/(iPhone|iPad|iPod)/.test(ua) && !/Safari\//.test(ua)) return true; // WKWebView
+  if (/(FBAN|FBAV|Instagram|Line\/|MicroMessenger|GSA\/)/.test(ua)) return true;
+  return false;
+}
+
 function cameraProblem(e) {
+  if (inAppWebView() && (e?.name === 'NotAllowedError' || e?.name === 'SecurityError' || !navigator.mediaDevices?.getUserMedia)) {
+    return { title: 'Aplikasi belum diberi izin kamera', text: 'Kamu membuka lewat aplikasi. Buka Pengaturan HP > Aplikasi > Japanese Club > Izin > Kamera > Izinkan, lalu buka aplikasi lagi. Atau pakai tombol Foto QR / Buka di browser di bawah.' };
+  }
   if (!navigator.mediaDevices?.getUserMedia) {
     return { title: 'Kamera tidak bisa dipakai di sini', text: 'Browser ini tidak mendukung kamera, atau halaman tidak dibuka lewat HTTPS. Buka website lewat alamat https:// di Chrome atau Safari.' };
   }
@@ -58,14 +71,85 @@ export async function scannerView({ container, isStale }) {
         <li>Tekan <strong>Mulai kamera</strong> dan izinkan akses kamera.</li>
         <li>Arahkan kamera ke QR sampai muncul tanda berhasil.</li>
       </ol>
-      <button class="btn btn-primary btn-block" id="sc-start" style="min-height:50px">${icon('camera')} Mulai kamera</button>`;
+      ${inAppWebView() ? `<div class="alert alert-info" style="margin-bottom:14px">${icon('info')}<div class="small">Kamu membuka lewat aplikasi. Jika kamera tidak mau menyala, pakai <strong>Foto QR</strong> atau <strong>Buka di browser</strong>.</div></div>` : ''}
+      <button class="btn btn-primary btn-block" id="sc-start" style="min-height:50px">${icon('camera')} Mulai kamera</button>
+      ${fallbackButtons()}`;
     body.querySelector('#sc-start').addEventListener('click', start);
+    wireFallbacks();
+  }
+
+  function fallbackButtons() {
+    return `<div class="sc-alt">
+      <label class="btn btn-block" for="sc-photo" style="margin-top:10px">${icon('camera')} Foto QR (pakai kamera HP)</label>
+      <input type="file" id="sc-photo" accept="image/*" capture="environment" class="sr-only" />
+      <div class="row" style="margin-top:10px;justify-content:space-between">
+        <button class="btn btn-quiet btn-sm" id="sc-check" type="button">Cek kamera</button>
+        <a class="btn btn-quiet btn-sm" id="sc-browser" href="${esc(location.href)}" target="_blank" rel="noopener">Buka di browser</a>
+      </div></div>`;
+  }
+
+  function wireFallbacks() {
+    body.querySelector('#sc-photo')?.addEventListener('change', onPhoto);
+    body.querySelector('#sc-check')?.addEventListener('click', checkCamera);
+  }
+
+  async function checkCamera() {
+    const lines = [];
+    lines.push(['Halaman aman (HTTPS)', window.isSecureContext]);
+    lines.push(['Browser mendukung kamera', !!navigator.mediaDevices?.getUserMedia]);
+    let perm = 'tidak diketahui';
+    try { perm = (await navigator.permissions.query({ name: 'camera' })).state; } catch { /* tidak semua browser */ }
+    lines.push([`Izin kamera: ${perm === 'granted' ? 'diizinkan' : perm === 'denied' ? 'ditolak' : perm === 'prompt' ? 'akan ditanya' : perm}`, perm !== 'denied']);
+    let devices = 0;
+    try { devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput').length; } catch { /* abaikan */ }
+    lines.push([`Kamera terdeteksi: ${devices}`, devices > 0 || perm === 'prompt']);
+    lines.push(['Dibuka lewat aplikasi (WebView)', null]);
+    lines[lines.length - 1][1] = !inAppWebView() ? true : 'info';
+    showIdle(`<div class="panel-soft" style="margin-bottom:14px"><strong>Hasil cek kamera</strong><ul class="plain-list">${lines.map(([t, ok]) => `<li>${ok === true ? 'OK' : ok === 'info' ? 'Ya' : 'Perlu dicek'} &middot; ${esc(t)}</li>`).join('')}</ul></div>`);
+  }
+
+  async function onPhoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    body.innerHTML = `<div class="loading-line"><span class="spinner"></span>Membaca QR dari foto...</div>`;
+    try {
+      const text = await decodeFile(file);
+      if (!text || !/^JC1\.[A-Za-z0-9]+\.\d+\.[A-Za-z0-9_-]+$/.test(text)) {
+        showProblem({ title: 'QR tidak terbaca di foto', text: 'Pastikan seluruh QR terlihat jelas dan tidak buram, lalu foto ulang. Karena QR berganti tiap 5 detik, ambil foto dan kirim dengan cepat.' }, { retry: false });
+        body.insertAdjacentHTML('beforeend', fallbackButtons());
+        wireFallbacks();
+        return;
+      }
+      await submit(text);
+    } catch (err) {
+      showProblem({ title: 'Foto tidak bisa dibaca', text: err.message || 'Coba foto ulang.' }, { retry: false });
+    }
+  }
+
+  async function decodeFile(file) {
+    const bmp = await createImageBitmap(file).catch(() => null);
+    if (!bmp) throw new Error('File bukan gambar yang valid.');
+    if ('BarcodeDetector' in window) {
+      try {
+        const d = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const f = await d.detect(bmp);
+        if (f[0]?.rawValue) return f[0].rawValue;
+      } catch { /* lanjut jsQR */ }
+    }
+    await loadScript(LIBS.jsqr);
+    const scale = Math.min(1, 1000 / Math.max(bmp.width, bmp.height));
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    ctx2d.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const img = ctx2d.getImageData(0, 0, canvas.width, canvas.height);
+    return window.jsQR?.(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' })?.data || null;
   }
 
   function showProblem(p, { retry = true } = {}) {
     stop();
-    body.innerHTML = `<div class="alert alert-warn" role="alert">${icon('alert')}<div><strong>${esc(p.title)}</strong><p style="margin-top:4px">${esc(p.text)}</p></div></div>${retry ? `<button class="btn btn-block" id="sc-retry" style="margin-top:14px">${icon('refresh')} Coba lagi</button>` : ''}`;
+    body.innerHTML = `<div class="alert alert-warn" role="alert">${icon('alert')}<div><strong>${esc(p.title)}</strong><p style="margin-top:4px">${esc(p.text)}</p></div></div>${retry ? `<button class="btn btn-block" id="sc-retry" style="margin-top:14px">${icon('refresh')} Coba lagi</button>${fallbackButtons()}` : ''}`;
     body.querySelector('#sc-retry')?.addEventListener('click', start);
+    if (retry) wireFallbacks();
   }
 
   function showResult(kind, title, text, status) {

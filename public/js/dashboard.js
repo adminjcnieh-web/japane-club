@@ -1,10 +1,13 @@
 // Dasbor: tampilan staf (statistik klub) dan tampilan anggota (kehadiran pribadi).
 import * as api from './api.js';
 import { icon } from './icons.js';
-import { esc, STATUS_KEYS, STATUS_LABEL, STATUS_COLOR, fmtDate, fmtDateShort, fmtTime, fmtMonthShort, timeAgo, pct, loadScript, dayNum } from './utils.js';
+import { esc, todayStr, STATUS_KEYS, STATUS_LABEL, STATUS_COLOR, fmtDate, fmtDateShort, fmtTime, fmtMonthShort, timeAgo, pct, loadScript, dayNum } from './utils.js';
 import { LIBS } from './config.js';
 import { pageHead, skeletonPage, errorState, emptyState, statusBadge, meetingBadge } from './ui.js';
 import { openAnnouncement } from './announcements.js';
+import { avatar } from './avatar.js';
+import { loadProgress, overall, catProgress, lastLesson, recommended } from './learn/progress.js';
+import { CATEGORIES, wordOfTheDay } from './learn/data.js';
 
 export const ACTION_TEXT = {
   'member.create': (a) => `membuat akun ${a.targetName}`,
@@ -25,6 +28,10 @@ export const ACTION_TEXT = {
   'announcement.update': (a) => `mengubah pengumuman "${a.detail}"`,
   'announcement.delete': (a) => `menghapus pengumuman "${a.detail}"`,
   'settings.update': () => 'mengubah informasi klub',
+  'meeting.restore': (a) => `memulihkan pertemuan ${a.meetingName}`,
+  'meeting.purge': (a) => `menghapus permanen pertemuan ${a.meetingName}`,
+  'avatar.update': (a) => `mengganti foto profil${a.targetName ? ` ${a.targetName}` : ''}`,
+  'avatar.delete': (a) => `menghapus foto profil${a.targetName ? ` ${a.targetName}` : ''}`,
   'admin.bootstrap': () => 'membuat akun admin pertama',
 };
 export const actionText = (a) => (ACTION_TEXT[a.action] ? ACTION_TEXT[a.action](a) : a.action);
@@ -98,12 +105,19 @@ async function drawCharts(container, d, isStale) {
 }
 
 // ---------- Tampilan staf ----------
-function staffHtml(d, isStaff) {
+function greeting() {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' }).format(new Date())) % 24;
+  return h < 11 ? 'Selamat pagi' : h < 15 ? 'Selamat siang' : h < 18 ? 'Selamat sore' : 'Selamat malam';
+}
+const firstName = (u) => String(u.fullName || '').split(' ')[0];
+
+function staffHtml(d, isStaff, user) {
   const s = d.stats;
   const live = d.openMeeting
     ? `<div class="live-banner"><span class="live-dot"></span><div class="grow"><strong>${esc(d.openMeeting.name)}</strong><div class="small" style="opacity:.85">Absensi sedang dibuka${s.notYetPresent !== null ? ` - ${s.notYetPresent} anggota belum hadir` : ''}</div></div><a class="btn" href="#/meetings/${esc(d.openMeeting.id)}/qr">${icon('qr')} Buka layar QR</a></div>`
     : '';
   return `
+    <div class="hero staff">${avatar(user, { size: 'xl', full: true })}<div class="hero-text"><h1>${greeting()}, ${esc(firstName(user))}</h1><p>Ringkasan aktivitas Japanese Club hari ini.</p></div></div>
     ${live}
     <div class="ledger" role="list">
       ${ledgerItem(s.activeMembers, 'Anggota aktif')}
@@ -137,29 +151,46 @@ function ringSvg(percent) {
   return `<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="track" cx="60" cy="60" r="${r}" fill="none" stroke-width="11"/><circle class="bar" cx="60" cy="60" r="${r}" fill="none" stroke-width="11" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - Math.min(100, percent) / 100)}"/></svg><div class="ring-center"><div><strong>${esc(pct(percent))}</strong><span>kehadiran</span></div></div></div>`;
 }
 
-function memberHtml(d, user) {
+function learnPanels(lp) {
+  const word = wordOfTheDay(todayStr());
+  const wotd = `<div class="panel span-4"><div class="panel-head"><h2>Kosakata hari ini</h2></div><div class="panel-body wotd"><div class="wotd-jp">${esc(word.jp)}</div><div class="wotd-ro">${esc(word.romaji)}</div><div class="wotd-id">${esc(word.id)}</div></div></div>`;
+  if (!lp) return wotd;
+  const o = overall(lp), last = lastLesson(lp), rec = recommended(lp);
+  const progress = `<div class="panel span-8"><div class="panel-head"><h2>Progres belajar</h2><strong class="num">${o.percent}%</strong></div><div class="panel-body stack" style="gap:10px">
+    ${CATEGORIES.map((c) => { const p = catProgress(lp, c.id); return `<div class="prog-row"><span>${esc(c.name)}</span><div class="meter"><i style="width:${p.percent}%"></i></div><span>${p.done}/${p.total}</span></div>`; }).join('')}
+    <p class="muted small" style="margin-top:4px">${o.done} dari ${o.total} level selesai.</p></div></div>`;
+  const pick = `<div class="panel span-4"><div class="panel-head"><h2>Lanjut belajar</h2></div><div class="panel-body pick-card">${
+    rec ? `<span class="muted small">${esc(rec.catName)}</span><h3>Level ${rec.n}: ${esc(rec.title)}</h3><a class="btn btn-primary btn-sm" href="#/learn/${esc(rec.cat)}/${rec.n}">Mulai level</a>${last ? `<span class="small muted">Terakhir: ${esc(last.catName)}, level ${last.n}${last.passed ? ' (lulus)' : ''}</span>` : ''}`
+    : '<h3>Semua level selesai</h3><p class="muted small">Hebat! Ulangi level mana pun untuk latihan.</p>'}</div></div>`;
+  return progress + pick + wotd;
+}
+
+function memberHtml(d, user, lp) {
   const live = d.openMeeting
     ? `<div class="live-banner"><span class="live-dot"></span><div class="grow"><strong>${esc(d.openMeeting.name)}</strong><div class="small" style="opacity:.85">Absensi sedang dibuka. Pindai QR di layar pengurus.</div></div><a class="btn" href="#/scan">${icon('scan')} Scan sekarang</a></div>`
     : '';
   const t = d.summary;
+  const rec = lp ? recommended(lp) : null;
   return `
-    <p class="muted" style="margin:-14px 0 20px">Halo, ${esc(user.fullName.split(' ')[0])}. Ini ringkasan kehadiranmu.</p>
+    <div class="hero">${avatar(user, { size: 'hero', full: true })}
+      <div class="hero-text"><h1>${greeting()}, ${esc(firstName(user))}</h1><p>Yuk, lanjutkan belajar bahasa Jepang hari ini.</p></div>
+      <div class="hero-cta"><a class="btn btn-primary" href="${rec ? `#/learn/${esc(rec.cat)}/${rec.n}` : '#/learn'}">${icon('book')} ${rec && lp.last ? 'Lanjut belajar' : 'Mulai belajar'}</a></div>
+    </div>
     ${live}
-    <div class="grid-main">
-      <div class="panel"><div class="panel-body">
+    <div class="home-grid">
+      <div class="panel span-7"><div class="panel-body">
         <div class="row" style="gap:22px;align-items:center">${ringSvg(t.percentage)}
           <div class="grow"><h2>Kehadiran keseluruhan</h2><p class="muted small" style="margin-bottom:12px">${t.total} pertemuan tercatat. Bulan ini: ${d.monthSummary.hadir + d.monthSummary.terlambat} dari ${d.monthSummary.total} hadir.</p></div></div>
         <div class="mini-stats" style="margin-top:18px">${STATUS_KEYS.map((k) => `<div><strong>${t[k]}</strong><span>${STATUS_LABEL[k]}</span></div>`).join('')}</div>
       </div></div>
-      ${nextMeetingPanel(d.nextMeeting, false)}
-    </div>
-    <div class="grid-main" style="margin-top:18px">
-      <div class="panel"><div class="panel-head"><h2>Riwayat terakhir</h2><a class="btn btn-quiet btn-sm" href="#/profile">Semua</a></div><div class="panel-body panel-flush">${
+      <div class="span-5">${nextMeetingPanel(d.nextMeeting, false)}</div>
+      ${learnPanels(lp)}
+      <div class="panel span-7"><div class="panel-head"><h2>Riwayat terakhir</h2><a class="btn btn-quiet btn-sm" href="#/profile">Semua</a></div><div class="panel-body panel-flush">${
         d.recent.length
           ? `<div class="table-wrap"><table class="table stackable"><thead><tr><th>Pertemuan</th><th>Tanggal</th><th>Status</th></tr></thead><tbody>${d.recent.map((r) => `<tr><td class="cell-primary"><strong>${esc(r.meetingName)}</strong></td><td data-label="Tanggal">${esc(fmtDateShort(r.meetingDate))}</td><td data-label="Status">${statusBadge(r.status)}</td></tr>`).join('')}</tbody></table></div>`
           : `<div class="panel-body">${emptyState({ iconName: 'history', title: 'Belum ada riwayat', text: 'Kehadiranmu akan muncul di sini setelah pertemuan pertama.' })}</div>`
       }</div></div>
-      ${announcementsPanel(d.announcements)}
+      <div class="span-5">${announcementsPanel(d.announcements)}</div>
     </div>`;
 }
 
@@ -169,9 +200,9 @@ export async function dashboardView({ container, user, isStaff, isStale }) {
 
   const load = async (silent = false) => {
     try {
-      const d = await api.get('/api/dashboard');
+      const [d, lp] = await Promise.all([api.get('/api/dashboard'), isStaff ? null : loadProgress(true).catch(() => null)]);
       if (isStale()) return;
-      container.innerHTML = pageHead({ title: 'Beranda', subtitle: isStaff ? 'Ringkasan aktivitas Japanese Club.' : '', actions: `<button class="btn btn-sm" id="dash-refresh">${icon('refresh')} Muat ulang</button>` }) + (d.role === 'staff' ? staffHtml(d, isStaff) : memberHtml(d, user));
+      container.innerHTML = pageHead({ title: 'Beranda', actions: `<button class="btn btn-sm" id="dash-refresh">${icon('refresh')} Muat ulang</button>` }) + (d.role === 'staff' ? staffHtml(d, isStaff, user) : memberHtml(d, user, lp));
       bindAnnouncements(container, d.announcements);
       container.querySelector('#dash-refresh')?.addEventListener('click', () => load());
       if (d.role === 'staff') {

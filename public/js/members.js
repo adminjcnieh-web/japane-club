@@ -2,6 +2,8 @@
 import * as api from './api.js';
 import { icon } from './icons.js';
 import { esc, initials, fmtDate, fmtDateShort, STATUS_KEYS, STATUS_LABEL, ROLE_LABEL, debounce, pct, todayStr } from './utils.js';
+import { avatar } from './avatar.js';
+import { removePhoto } from './photo.js';
 import { pageHead, formModal, confirmDialog, toast, emptyState, errorState, loadingBlock, roleBadge, statusBadge, skeletonPage, withBusy } from './ui.js';
 
 const KELAS_LIST = ['X-1', 'X-2', 'X-3', 'XI-1', 'XI-2', 'XI-3', 'XII-1', 'XII-2', 'XII-3'];
@@ -123,7 +125,7 @@ export async function membersView({ container, user, isStale }) {
     if (!list.length) return '';
     return list.map((m) => `
       <tr class="clickable" data-uid="${esc(m.uid)}">
-        <td class="cell-primary"><div class="cell-name"><span class="avatar">${esc(initials(m.fullName))}</span><div style="min-width:0"><strong>${esc(m.fullName)}</strong><div class="small muted">@${esc(m.username)}</div></div></div></td>
+        <td class="cell-primary"><div class="cell-name">${avatar(m)}<div style="min-width:0"><strong>${esc(m.fullName)}</strong><div class="small muted">@${esc(m.username)}</div></div></div></td>
         <td data-label="Kelas">${esc(m.kelas || '-')}</td>
         <td data-label="Jabatan">${esc(m.jabatan || '-')}</td>
         <td data-label="Role">${roleBadge(m.role)}</td>
@@ -219,10 +221,10 @@ export async function memberDetailView({ container, user, params, isStale, isSta
         <p style="margin-bottom:12px"><a href="#/members" class="small">${icon('chevronLeft')} Kembali ke daftar anggota</a></p>
         <div class="panel"><div class="panel-body">
           <div class="row" style="gap:18px;align-items:flex-start">
-            <span class="avatar avatar-lg">${esc(initials(m.fullName))}</span>
+            ${avatar(m, { size: 'lg', full: true })}
             <div class="grow"><h1 style="font-size:1.5rem">${esc(m.fullName)}</h1>
               <div class="row" style="margin-top:6px">${roleBadge(m.role)} ${m.active ? '<span class="badge badge-hadir">Aktif</span>' : '<span class="badge badge-off">Nonaktif</span>'}</div></div>
-            ${isAdmin ? `<div class="page-actions"><button class="btn btn-sm" id="d-edit">${icon('edit')} Ubah</button><button class="btn btn-sm" id="d-pw">${icon('key')} Reset password</button><button class="btn btn-sm ${m.active ? 'btn-danger' : ''}" id="d-active">${m.active ? 'Nonaktifkan' : 'Aktifkan'}</button></div>` : ''}
+            ${isAdmin ? `<div class="page-actions"><button class="btn btn-sm" id="d-edit">${icon('edit')} Ubah</button><button class="btn btn-sm" id="d-pw">${icon('key')} Reset password</button>${m.avatarVer ? `<button class="btn btn-sm" id="d-photo-del">Hapus foto</button>` : ''}<button class="btn btn-sm ${m.active ? 'btn-danger' : ''}" id="d-active">${m.active ? 'Nonaktifkan' : 'Aktifkan'}</button></div>` : ''}
           </div>
           <hr class="divider" />
           <dl class="kv">
@@ -242,6 +244,7 @@ export async function memberDetailView({ container, user, params, isStale, isSta
             : `<div class="panel-body">${emptyState({ iconName: 'history', title: 'Belum ada riwayat absensi' })}</div>`
         }</div></div>`;
       container.querySelector('#d-edit')?.addEventListener('click', async () => { if (await openMemberForm(m)) load(); });
+      container.querySelector('#d-photo-del')?.addEventListener('click', async () => { try { if (await removePhoto(m, { own: false })) load(); } catch (err) { toast(err.message, 'error'); } });
       container.querySelector('#d-pw')?.addEventListener('click', () => openResetPassword(m));
       container.querySelector('#d-active')?.addEventListener('click', async (e) => {
         try { if (await toggleActive(m)) load(); } catch (err) { toast(err.message, 'error'); }

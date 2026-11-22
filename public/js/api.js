@@ -112,6 +112,18 @@ export async function api(method, path, body) {
   }
 }
 
+/** Mengambil file biner (mis. foto profil) dengan token login. */
+export async function blob(path) {
+  if (!session) throw new ApiError(401, 'no_session', 'Silakan login terlebih dahulu.');
+  const go = () => fetch(API_BASE + path, { headers: { authorization: `Bearer ${session.idToken}` } });
+  if (session.expiresAt - Date.now() < 60000) await refreshSession();
+  let res;
+  try { res = await go(); } catch { throw new ApiError(0, 'network', 'Tidak dapat terhubung ke server.'); }
+  if (res.status === 401) { await refreshSession(); res = await go(); }
+  if (!res.ok) throw new ApiError(res.status, 'error', 'Gambar tidak tersedia');
+  return res.blob();
+}
+
 export const get = (p) => api('GET', p);
 export const post = (p, b = {}) => api('POST', p, b);
 export const put = (p, b = {}) => api('PUT', p, b);

@@ -19,7 +19,7 @@ export async function scan(ctx) {
 
   const { meetingId } = await verifyToken(ctx.env.QR_SECRET, token, ctx.now.getTime());
   const meeting = await ctx.fs.get(`meetings/${meetingId}`);
-  if (!meeting) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
+  if (!meeting || meeting.deletedAt) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
   if (meeting.status !== 'open') {
     throw new HttpError(
       409,
@@ -85,7 +85,7 @@ export async function setStatus(ctx) {
   const note = v.str(b.note, { name: 'Catatan', max: 200 });
 
   const [meeting, member] = await Promise.all([ctx.fs.get(`meetings/${meetingId}`), ctx.fs.get(`users/${uid}`)]);
-  if (!meeting) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
+  if (!meeting || meeting.deletedAt) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
   if (!member) throw new HttpError(404, 'Anggota tidak ditemukan', 'not_found');
 
   const path = `attendance/${meetingId}_${uid}`;

@@ -30,7 +30,7 @@ window.Chart.defaults = { font: {}, color: '' };`,
     constructor(ws, n) { this.ws = ws; this.n = n; this.cells = new Map(); this.height = 15; }
     getCell(k) { const col = typeof k === 'number' ? k : this.ws.keyIndex(k); if (!this.cells.has(col)) this.cells.set(col, new Cell()); return this.cells.get(col); }
     set values(arr) { arr.forEach((v, i) => { if (v !== undefined) this.getCell(i + 1).value = v; }); }
-    eachCell(cb) { [...this.cells.keys()].sort((a, b) => a - b).forEach((c) => cb(this.cells.get(c), c)); }
+    eachCell(a, b) { const cb = typeof a === 'function' ? a : b; const full = typeof a === 'object' && a && a.includeEmpty; const keys = full ? Array.from({ length: Math.max(0, ...this.cells.keys()) }, (_, i) => i + 1) : [...this.cells.keys()].sort((x, y) => x - y); keys.forEach((c) => cb(this.getCell(c), c)); }
   }
   class WS {
     constructor(name) { this.name = name; this.rows = new Map(); this._cols = []; this.views = []; this.autoFilter = null; this.pageSetup = null; this.merges = []; }
@@ -38,13 +38,15 @@ window.Chart.defaults = { font: {}, color: '' };`,
     set columns(defs) { this._cols = defs; defs.forEach((d, i) => { if (d.header) this.getRow(1).getCell(i + 1).value = d.header; }); }
     getRow(n) { if (!this.rows.has(n)) this.rows.set(n, new Row(this, n)); return this.rows.get(n); }
     addRow(obj) { const n = Math.max(0, ...this.rows.keys()) + 1; const r = this.getRow(n); if (Array.isArray(obj)) r.values = obj; else for (const [k, v] of Object.entries(obj)) r.getCell(k).value = v; return r; }
-    getCell(addr) { const m = /^([A-Z]+)(\\d+)$/.exec(addr); const col = m[1].split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0); return this.getRow(Number(m[2])).getCell(col); }
-    mergeCells(r) { this.merges.push(r); }
+    getCell(addr, c2) { if (typeof addr === 'number') return this.getRow(addr).getCell(c2); const m = /^([A-Z]+)(\\d+)$/.exec(addr); const col = m[1].split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0); return this.getRow(Number(m[2])).getCell(col); }
+    mergeCells(...r) { this.merges.push(r.join(',')); }
+    getColumn(c) { this._colObjs = this._colObjs || {}; return (this._colObjs[c] = this._colObjs[c] || { width: 8 }); }
+    addConditionalFormatting(x) { (this.cf = this.cf || []).push(x); }
   }
   class Workbook {
     constructor() { this.sheets = []; const self = this; this.xlsx = { async writeBuffer() { return new TextEncoder().encode(JSON.stringify(self.dump())); } }; }
     addWorksheet(name) { const ws = new WS(name); this.sheets.push(ws); return ws; }
-    dump() { return this.sheets.map((ws) => ({ name: ws.name, frozen: ws.views[0] && ws.views[0].state === 'frozen', filter: ws.autoFilter, merges: ws.merges, rows: [...ws.rows.keys()].sort((a, b) => a - b).map((n) => { const r = ws.rows.get(n); const o = {}; r.eachCell((c, i) => { o[i] = c.value instanceof Date ? 'DATE:' + c.value.toISOString() : c.value; }); return o; }) })); }
+    dump() { return this.sheets.map((ws) => ({ name: ws.name, widths: Object.fromEntries(Object.entries(ws._colObjs || {}).map(([k, v]) => [k, v.width])), cf: ws.cf ? ws.cf.length : 0, frozen: ws.views[0] && ws.views[0].state === 'frozen', filter: ws.autoFilter, merges: ws.merges, rows: [...ws.rows.keys()].sort((a, b) => a - b).map((n) => { const r = ws.rows.get(n); const o = {}; r.eachCell((c, i) => { o[i] = c.value instanceof Date ? 'DATE:' + c.value.toISOString() : c.value; }); return o; }) })); }
   }
   window.ExcelJS = { Workbook };
 })();`,

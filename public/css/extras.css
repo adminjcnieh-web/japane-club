@@ -1,0 +1,65 @@
+/* Avatar foto, pemotong foto, pemutar musik, dialog hapus, daftar polos */
+
+.avatar { overflow: hidden; background: var(--sakura); color: var(--beni-dark); position: relative; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar-sm { width: 30px; height: 30px; font-size: 0.8rem; }
+.avatar-lg { width: 72px; height: 72px; font-size: 1.6rem; }
+.avatar-xl { width: 112px; height: 112px; font-size: 2.4rem; }
+.avatar-hero { width: 84px; height: 84px; font-size: 1.9rem; box-shadow: 0 0 0 4px var(--paper), 0 0 0 6px var(--sakura-deep); }
+
+.plain-list { margin: 6px 0 0; padding-left: 1.1rem; color: var(--ink-2); }
+.plain-list li { margin: 3px 0; }
+.del-summary { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--r-md); background: var(--washi); border: 1px solid var(--line); margin-bottom: 12px; }
+.del-summary strong { font-family: var(--font-display); font-size: 1.1rem; }
+.del-summary span { color: var(--muted); font-size: 0.9rem; }
+.sc-alt { margin-top: 6px; }
+
+/* ----- Foto profil ----- */
+.photo-card { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.photo-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.crop-wrap { display: grid; gap: 14px; justify-items: center; }
+.crop-stage { position: relative; width: min(300px, 78vw); aspect-ratio: 1; background: #111; border-radius: 14px; overflow: hidden; touch-action: none; cursor: grab; }
+.crop-stage:active { cursor: grabbing; }
+.crop-stage canvas { width: 100%; height: 100%; display: block; }
+.crop-stage::after { content: ''; position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgba(18, 25, 50, 0.55); pointer-events: none; }
+.crop-zoom { width: min(300px, 78vw); display: grid; gap: 4px; }
+.crop-zoom input { width: 100%; accent-color: var(--beni); }
+.crop-preview { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.88rem; }
+.crop-preview canvas { width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--line); }
+
+/* ----- Pemutar musik mini ----- */
+.mp { position: fixed; z-index: 45; right: 16px; bottom: 16px; font-family: var(--font-body); }
+.mp-card {
+  width: 300px; max-width: calc(100vw - 32px); padding: 12px 14px 12px; border-radius: 18px;
+  background: rgba(18, 25, 50, 0.94); color: #eceaf5; box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  display: grid; gap: 8px;
+}
+.mp-top { display: flex; align-items: center; gap: 10px; }
+.mp-art { width: 38px; height: 38px; border-radius: 10px; flex: none; background: var(--beni); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; color: #fff6ec; }
+.mp-title { min-width: 0; flex: 1; }
+.mp-title strong { display: block; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-title span { display: block; font-size: 0.76rem; color: #aab2d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-btn { width: 36px; height: 36px; border-radius: 50%; border: 0; background: transparent; color: #eceaf5; display: grid; place-items: center; cursor: pointer; flex: none; -webkit-tap-highlight-color: transparent; }
+.mp-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.mp-btn .icon { width: 19px; height: 19px; }
+.mp-btn.play { background: var(--beni); width: 40px; height: 40px; }
+.mp-btn.play:hover { background: #cf3139; }
+.mp-row { display: flex; align-items: center; gap: 6px; }
+.mp-bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.16); overflow: hidden; }
+.mp-bar i { display: block; height: 100%; width: 0; background: var(--sakura-deep); transition: width 0.25s linear; }
+.mp-vol { flex: 1; accent-color: var(--sakura-deep); min-width: 0; }
+.mp-hint { font-size: 0.76rem; color: #c8cde4; background: rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 6px 10px; }
+.mp-mini {
+  display: flex; align-items: center; gap: 8px; border: 0; cursor: pointer; padding: 8px 14px 8px 8px; border-radius: 999px;
+  background: rgba(18, 25, 50, 0.94); color: #eceaf5; box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6); font: inherit; font-size: 0.85rem; font-weight: 700;
+}
+.mp-mini .mp-art { width: 30px; height: 30px; border-radius: 50%; font-size: 0.9rem; }
+.mp-mini.playing .mp-art { animation: mp-spin 6s linear infinite; }
+@keyframes mp-spin { to { transform: rotate(360deg); } }
+@media (max-width: 860px) {
+  .mp { bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom)); left: 12px; right: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .mp-mini.playing .mp-art { animation: none; } }
+
+@media (min-width: 861px) { #toast-root { bottom: 76px; } }

@@ -9,6 +9,7 @@ const DEFAULTS = {
   description: 'Ekstrakurikuler bahasa dan budaya Jepang',
   contact: '',
   defaultLateMinutes: 15,
+  learningHearts: 5,
 };
 
 export async function readSettings(ctx) {
@@ -18,6 +19,7 @@ export async function readSettings(ctx) {
     description: doc?.description ?? DEFAULTS.description,
     contact: doc?.contact ?? DEFAULTS.contact,
     defaultLateMinutes: Number.isInteger(doc?.defaultLateMinutes) ? doc.defaultLateMinutes : DEFAULTS.defaultLateMinutes,
+    learningHearts: Number.isInteger(doc?.learningHearts) ? doc.learningHearts : DEFAULTS.learningHearts,
   };
 }
 
@@ -33,6 +35,7 @@ export async function put(ctx) {
     description: v.str(b.description, { name: 'Deskripsi', max: 300 }),
     contact: v.str(b.contact, { name: 'Kontak', max: 100 }),
     defaultLateMinutes: v.intRange(b.defaultLateMinutes, { name: 'Batas terlambat (menit)', min: 0, max: 180 }),
+    learningHearts: b.learningHearts === undefined ? (await readSettings(ctx)).learningHearts : v.intRange(b.learningHearts, { name: 'Jumlah nyawa belajar', min: 1, max: 10 }),
     updatedAt: ctx.now,
     updatedBy: ctx.auth.uid,
   };

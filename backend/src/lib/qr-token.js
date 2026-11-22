@@ -1,16 +1,16 @@
 // Token QR dinamis (stateless, HMAC-SHA256).
 //
 // Format: JC1.<meetingId>.<jendelaWaktu>.<tandaTangan>
-//  - jendelaWaktu = floor(detik / 30)  -> token berganti tiap 30 detik
+//  - jendelaWaktu = floor(detik / 5)  -> token berganti tiap 5 detik
 //  - tandaTangan  = HMAC(QR_SECRET, "<meetingId>.<jendelaWaktu>")
-//  - Token diterima jika berada di jendela sekarang atau 1 jendela sebelumnya
-//    (toleransi keterlambatan pemindaian), jadi umur maksimal ~60 detik.
+//  - Token diterima jika berada di jendela sekarang atau 2 jendela sebelumnya
+//    (toleransi kamera + sinyal), jadi umur maksimal ~15 detik.
 //
 // Rahasia QR_SECRET hanya ada di server, sehingga browser tidak bisa memalsukan token.
 import { HttpError } from './http.js';
 
 export const WINDOW_SECONDS = 5;
-const GRACE_WINDOWS = 1;
+const GRACE_WINDOWS = 2;
 const enc = new TextEncoder();
 
 function toB64url(bytes) {

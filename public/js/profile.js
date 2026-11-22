@@ -4,6 +4,8 @@ import { icon } from './icons.js';
 import { esc, initials, fmtDate, fmtDateShort, STATUS_KEYS, STATUS_LABEL, ROLE_LABEL, pct } from './utils.js';
 import { pageHead, toast, emptyState, errorState, skeletonPage, statusBadge, roleBadge, formModal, loadingBlock } from './ui.js';
 import { openChangePassword } from './auth.js';
+import { avatar } from './avatar.js';
+import { openPhotoEditor, removePhoto } from './photo.js';
 
 export async function profileView({ container, user, isStale }) {
   container.innerHTML = skeletonPage();
@@ -12,11 +14,13 @@ export async function profileView({ container, user, isStale }) {
       const r = await api.get(`/api/members/${user.uid}/attendance`);
       if (isStale()) return;
       const m = r.member, t = r.summary;
+      const me = { ...user, ...(api.getSession()?.user || {}) };
       container.innerHTML = pageHead({ title: 'Profil saya' }) + `
         <div class="panel"><div class="panel-body">
           <div class="row" style="gap:18px;align-items:center">
-            <span class="avatar avatar-lg">${esc(initials(m.fullName))}</span>
-            <div class="grow"><h2 style="font-size:1.35rem">${esc(m.fullName)}</h2><div class="row" style="margin-top:6px">${roleBadge(m.role)}<span class="muted small">@${esc(m.username)}</span></div></div>
+            ${avatar(me, { size: 'xl', full: true })}
+            <div class="grow"><h2 style="font-size:1.35rem">${esc(m.fullName)}</h2><div class="row" style="margin-top:6px">${roleBadge(m.role)}<span class="muted small">@${esc(m.username)}</span></div>
+              <div class="row" style="margin-top:10px;gap:8px"><button class="btn btn-sm" id="pf-photo">${icon('camera')} Ganti foto</button>${me.avatarVer ? `<button class="btn btn-sm btn-danger" id="pf-photo-del">Hapus foto</button>` : ''}</div></div>
           </div>
           <hr class="divider" />
           <dl class="kv"><dt>Kelas</dt><dd>${esc(m.kelas || '-')}</dd><dt>Jabatan</dt><dd>${esc(m.jabatan || '-')}</dd><dt>Bergabung</dt><dd>${esc(fmtDate(m.joinedAt))}</dd></dl>
@@ -28,6 +32,8 @@ export async function profileView({ container, user, isStale }) {
             ? `<div class="table-wrap"><table class="table stackable"><thead><tr><th>Pertemuan</th><th>Tanggal</th><th>Status</th><th>Metode</th></tr></thead><tbody>${r.records.map((x) => `<tr><td class="cell-primary"><strong>${esc(x.meetingName)}</strong>${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</td><td data-label="Tanggal">${esc(fmtDateShort(x.meetingDate))}</td><td data-label="Status">${statusBadge(x.status)}</td><td data-label="Metode">${x.method === 'qr' ? 'Scan QR' : x.method === 'auto' ? 'Otomatis' : 'Diinput pengurus'}</td></tr>`).join('')}</tbody></table></div>`
             : `<div class="panel-body">${emptyState({ iconName: 'history', title: 'Belum ada riwayat', text: 'Kehadiranmu akan muncul di sini setelah pertemuan pertama.' })}</div>`
         }</div></div>`;
+      container.querySelector('#pf-photo').addEventListener('click', async () => { if (await openPhotoEditor(me)) load(); });
+      container.querySelector('#pf-photo-del')?.addEventListener('click', async () => { if (await removePhoto(me)) load(); });
       container.querySelector('#pf-pw').addEventListener('click', async () => {
         if (await openChangePassword()) { api.logout(); window.dispatchEvent(new CustomEvent('jcms:logout', { detail: { reason: 'Password sudah diganti. Silakan login dengan password baru.' } })); }
       });
@@ -63,6 +69,7 @@ export async function settingsView({ container, isStale }) {
         <div class="field"><label for="st-desc">Deskripsi singkat</label><textarea class="textarea" id="st-desc" name="description" maxlength="300" style="min-height:80px">${esc(s.description)}</textarea></div>
         <div class="field"><label for="st-contact">Kontak pembina atau pengurus</label><input class="input" id="st-contact" name="contact" maxlength="100" value="${esc(s.contact)}" /></div>
         <div class="field"><label for="st-late">Batas terlambat bawaan (menit)</label><input class="input" id="st-late" name="defaultLateMinutes" type="number" min="0" max="180" inputmode="numeric" required value="${esc(s.defaultLateMinutes)}" /><span class="hint">Dipakai bila pertemuan baru tidak mengatur batas sendiri.</span></div>
+        <div class="field"><label for="st-hearts">Jumlah nyawa di Learning Center</label><input class="input" id="st-hearts" name="learningHearts" type="number" min="1" max="10" inputmode="numeric" required value="${esc(s.learningHearts)}" /><span class="hint">Berapa kali boleh salah dalam satu level (1 sampai 10).</span></div>
         <div id="st-err"></div>
         <button class="btn btn-primary" type="submit" id="st-save">Simpan pengaturan</button>
       </form></div></div>`;
@@ -74,7 +81,7 @@ export async function settingsView({ container, isStale }) {
       btn.disabled = true;
       container.querySelector('#st-err').innerHTML = '';
       try {
-        const r = await api.put('/api/settings', { clubName: form.clubName.value.trim(), description: form.description.value.trim(), contact: form.contact.value.trim(), defaultLateMinutes: Number(form.defaultLateMinutes.value) });
+        const r = await api.put('/api/settings', { clubName: form.clubName.value.trim(), description: form.description.value.trim(), contact: form.contact.value.trim(), defaultLateMinutes: Number(form.defaultLateMinutes.value), learningHearts: Number(form.learningHearts.value) });
         for (const id of ['club-name', 'club-name-m']) { const el = document.getElementById(id); if (el) el.textContent = r.settings.clubName; }
         toast('Pengaturan disimpan.');
       } catch (err) {

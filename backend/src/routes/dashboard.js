@@ -39,11 +39,13 @@ export async function get(ctx) {
   const month = today.slice(0, 7);
 
   if (!isStaff(ctx.auth.user)) {
-    const [records, meetings, announcements] = await Promise.all([
+    let [records, meetings, announcements] = await Promise.all([
       ctx.fs.query('attendance', { where: [['uid', '==', ctx.auth.uid]] }),
       ctx.fs.query('meetings', { where: [['date', '>=', today]] }),
       latestAnnouncements(ctx),
     ]);
+    records = records.filter((r) => !r.meetingDeleted);
+    meetings = meetings.filter((m) => !m.deletedAt);
     records.sort((a, b) => (a.meetingDate < b.meetingDate ? 1 : -1));
     const open = meetings.find((m) => m.status === 'open');
     const next = nextMeetingOf(meetings, today);
@@ -59,7 +61,7 @@ export async function get(ctx) {
   }
 
   return cached('staff', nowMs, async () => {
-    const [users, meetings, records, activity, announcements] = await Promise.all([
+    let [users, meetings, records, activity, announcements] = await Promise.all([
       ctx.fs.list('users'),
       ctx.fs.list('meetings'),
       ctx.fs.query('attendance', { where: [['meetingDate', '>=', monthStartBack(today, 5)]] }),
@@ -67,6 +69,8 @@ export async function get(ctx) {
       latestAnnouncements(ctx),
     ]);
 
+    meetings = meetings.filter((m) => !m.deletedAt);
+    records = records.filter((r) => !r.meetingDeleted);
     const active = users.filter((u) => u.active);
     const tracked = active.filter((u) => u.countsAttendance !== false);
 

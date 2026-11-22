@@ -2,7 +2,7 @@
 import * as api from './api.js';
 import { icon } from './icons.js';
 import { esc, fmtDate, fmtDateShort, fmtDateTime, STATUS_KEYS, STATUS_LABEL, todayStr, pct } from './utils.js';
-import { pageHead, formModal, confirmDialog, toast, emptyState, errorState, loadingBlock, meetingBadge, statusBadge, skeletonPage, withBusy } from './ui.js';
+import { pageHead, formModal, confirmDialog, openModal, toast, emptyState, errorState, loadingBlock, meetingBadge, statusBadge, skeletonPage, withBusy } from './ui.js';
 
 export function meetingForm(m) {
   return `
@@ -56,7 +56,7 @@ export async function meetingsView({ container, user, isStale }) {
   let filter = 'all';
   container.innerHTML = pageHead({ title: 'Pertemuan' }) + `<div class="panel">${loadingBlock()}</div>`;
 
-  const actions = `<button class="btn btn-primary" id="new-btn">${icon('plus')} Buat pertemuan</button>`;
+  const actions = `${user.role === 'admin' ? `<a class="btn" href="#/meetings/archive">${icon('archive')} Arsip</a>` : ''}<button class="btn btn-primary" id="new-btn">${icon('plus')} Buat pertemuan</button>`;
 
   function rows(list) {
     return list.map((m) => {
@@ -180,7 +180,7 @@ export async function meetingDetailView({ container, user, can, params, isStale 
             ${m.status === 'scheduled' ? `<button class="btn btn-primary" id="mt-open">${icon('qr')} Buka absensi</button>` : ''}
             ${m.status === 'closed' ? `<button class="btn" id="mt-open">Buka kembali absensi</button>` : ''}
             ${m.status !== 'closed' || isAdmin ? `<button class="btn" id="mt-edit">${icon('edit')} Ubah</button>` : ''}
-            ${isAdmin && m.status === 'scheduled' ? `<button class="btn btn-danger" id="mt-del">${icon('trash')} Hapus</button>` : ''}
+            ${isAdmin ? `<button class="btn btn-danger" id="mt-del">${icon('trash')} Hapus pertemuan</button>` : ''}
           </div>
         </div></div>
         <div class="panel" style="margin-top:18px"><div class="panel-head"><h2>Rekap kehadiran</h2><strong class="num">${esc(pct(c.percentage))}</strong></div><div class="panel-body"><div class="mini-stats">${STATUS_KEYS.map((k) => `<div><strong>${c[k]}</strong><span>${STATUS_LABEL[k]}</span></div>`).join('')}</div></div></div>
@@ -200,15 +200,95 @@ export async function meetingDetailView({ container, user, can, params, isStale 
       });
       container.querySelector('#mt-edit')?.addEventListener('click', async () => { if (await openMeetingForm(m)) await load(); });
       container.querySelector('#mt-del')?.addEventListener('click', async () => {
-        const ok = await confirmDialog({ title: 'Hapus pertemuan?', message: `"${m.name}" akan dihapus permanen. Hanya pertemuan tanpa riwayat absensi yang bisa dihapus.`, confirmLabel: 'Hapus', danger: true });
-        if (!ok) return;
-        try { await api.del(`/api/meetings/${id}`); toast('Pertemuan dihapus.'); location.hash = '#/meetings'; } catch (err) { toast(err.message, 'error'); }
+        if (await deleteMeetingFlow(m)) location.hash = '#/meetings';
       });
     } catch (e) {
       if (isStale()) return;
       container.innerHTML = `<p style="margin-bottom:12px"><a href="#/meetings" class="small">${icon('chevronLeft')} Kembali</a></p><div class="panel">${errorState(e.message)}</div>`;
       container.querySelector('#retry')?.addEventListener('click', load);
     }
+  }
+  await load();
+}
+
+// ---------- Hapus (arsip) dengan analisis dampak ----------
+/** Dialog hapus pertemuan: tampilkan nama, tanggal, dampak. Mengembalikan true jika berhasil diarsipkan. */
+export async function deleteMeetingFlow(m) {
+  let info = null;
+  try { info = await api.get(`/api/meetings/${m.id}/impact`); } catch (e) { toast(e.message, 'error'); return false; }
+  const c = info.counts;
+  const body = `
+    <div class="del-summary"><strong>${esc(m.name)}</strong><span>${esc(fmtDate(m.date))} &middot; ${esc(m.startTime)} - ${esc(m.endTime)} WIB</span></div>
+    <div class="alert alert-warn" role="alert">${icon('alert')}<div><strong>${info.attendanceCount ? `${info.attendanceCount} catatan absensi terkait` : 'Belum ada catatan absensi'}</strong>
+      ${info.attendanceCount ? `<p class="small" style="margin-top:4px">Hadir ${c.hadir}, terlambat ${c.terlambat}, izin ${c.izin}, sakit ${c.sakit}, alfa ${c.alfa}.</p>` : ''}</div></div>
+    <p style="margin:12px 0 6px"><strong>Yang akan terjadi:</strong></p>
+    <ul class="plain-list">${info.effects.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    <p class="small muted" style="margin-top:10px">Ini bukan hapus permanen. Pertemuan dipindah ke Arsip dan bisa dipulihkan kapan saja.</p>`;
+  return new Promise((resolve) => {
+    let done = false;
+    openModal({
+      title: 'Hapus pertemuan?',
+      html: body,
+      footer: [
+        { label: 'Batal', value: false },
+        {
+          label: 'Pindahkan ke Arsip', kind: 'danger-solid', close: false,
+          onClick: async (mod) => {
+            const btn = mod.buttons[1];
+            mod.setBusy(btn, true, 'Memproses');
+            try {
+              await api.del(`/api/meetings/${m.id}`);
+              done = true;
+              toast('Pertemuan dipindahkan ke Arsip.');
+              mod.close(true);
+            } catch (e) { mod.setBusy(btn, false); mod.showError(e.message); }
+            return false;
+          },
+        },
+      ],
+      onClose: () => resolve(done),
+    });
+  });
+}
+
+// ---------- Arsip (khusus admin) ----------
+export async function archiveView({ container, isStale }) {
+  container.innerHTML = pageHead({ title: 'Arsip pertemuan' }) + `<div class="panel">${loadingBlock()}</div>`;
+
+  async function load() {
+    try {
+      const r = await api.get('/api/meetings/archive');
+      if (isStale()) return;
+      const list = r.meetings;
+      container.innerHTML = `<p style="margin-bottom:12px"><a href="#/meetings" class="small">${icon('chevronLeft')} Kembali ke pertemuan</a></p>` +
+        pageHead({ title: 'Arsip pertemuan', subtitle: 'Pertemuan yang dihapus ada di sini. Pulihkan jika terhapus tidak sengaja.' }) +
+        `<div class="panel">${list.length ? `<div class="table-wrap"><table class="table stackable"><thead><tr><th>Kegiatan</th><th>Tanggal</th><th>Absensi</th><th>Dihapus</th><th></th></tr></thead><tbody>${list.map((m) => `<tr>
+          <td class="cell-primary"><strong>${esc(m.name)}</strong><div class="small muted">${esc(m.location || '')}</div></td>
+          <td data-label="Tanggal">${esc(fmtDateShort(m.date))}</td>
+          <td data-label="Absensi" class="num">${m.attendanceCount} catatan</td>
+          <td data-label="Dihapus">${esc(fmtDateTime(m.deletedAt))}<div class="small muted">oleh ${esc(m.deletedByName || '-')}</div></td>
+          <td class="cell-actions"><button class="btn btn-sm btn-primary" data-restore="${esc(m.id)}">Pulihkan</button><button class="btn btn-sm btn-danger" data-purge="${esc(m.id)}">Hapus permanen</button></td></tr>`).join('')}</tbody></table></div>`
+          : emptyState({ iconName: 'archive', title: 'Arsip kosong', text: 'Pertemuan yang kamu hapus akan muncul di sini.' })}</div>`;
+      container.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
+        try { await withBusy(b, 'Memulihkan', () => api.post(`/api/meetings/${b.dataset.restore}/restore`)); toast('Pertemuan dipulihkan.'); await load(); } catch (e) { toast(e.message, 'error'); }
+      }));
+      container.querySelectorAll('[data-purge]').forEach((b) => b.addEventListener('click', () => purge(list.find((x) => x.id === b.dataset.purge))));
+    } catch (e) {
+      if (isStale()) return;
+      container.innerHTML = pageHead({ title: 'Arsip pertemuan' }) + `<div class="panel">${errorState(e.message)}</div>`;
+      container.querySelector('#retry')?.addEventListener('click', load);
+    }
+  }
+
+  async function purge(m) {
+    const r = await formModal({
+      title: 'Hapus permanen?',
+      submitLabel: 'Hapus permanen',
+      html: `<div class="alert alert-bad" role="alert">${icon('alert')}<div><strong>Tidak bisa dibatalkan.</strong><p class="small" style="margin-top:4px">Pertemuan dan ${m.attendanceCount} catatan absensinya akan hilang selamanya.</p></div></div>
+        <div class="field" style="margin-top:14px"><label for="pg-name">Ketik nama pertemuan untuk melanjutkan</label><input class="input" id="pg-name" name="confirmName" autocomplete="off" placeholder="${esc(m.name)}" required /><span class="hint">${esc(m.name)}</span></div>`,
+      onSubmit: async (v) => { await api.post(`/api/meetings/${m.id}/purge`, { confirmName: v.confirmName }); toast('Pertemuan dihapus permanen.'); return true; },
+    });
+    if (r) await load();
   }
   await load();
 }

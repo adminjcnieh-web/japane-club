@@ -12,6 +12,8 @@ import * as announcements from './routes/announcements.js';
 import * as dashboard from './routes/dashboard.js';
 import * as reports from './routes/reports.js';
 import * as settings from './routes/settings.js';
+import * as avatars from './routes/avatars.js';
+import * as learning from './routes/learning.js';
 
 // [method, pola, handler, publik?]
 const ROUTES = [
@@ -21,6 +23,14 @@ const ROUTES = [
 
   ['GET', '/api/me', auth.me],
   ['POST', '/api/me/password', auth.changePassword],
+
+  ['PUT', '/api/me/avatar', avatars.putMine],
+  ['DELETE', '/api/me/avatar', avatars.deleteMine],
+  ['GET', '/api/avatars/:uid', avatars.get],
+  ['DELETE', '/api/members/:uid/avatar', avatars.deleteOf],
+
+  ['GET', '/api/learning', learning.get],
+  ['POST', '/api/learning/result', learning.record],
 
   ['GET', '/api/dashboard', dashboard.get],
 
@@ -34,7 +44,11 @@ const ROUTES = [
 
   ['GET', '/api/meetings', meetings.list],
   ['POST', '/api/meetings', meetings.create],
+  ['GET', '/api/meetings/archive', meetings.archive],
   ['GET', '/api/meetings/:id', meetings.detail],
+  ['GET', '/api/meetings/:id/impact', meetings.impact],
+  ['POST', '/api/meetings/:id/restore', meetings.restore],
+  ['POST', '/api/meetings/:id/purge', meetings.purge],
   ['PATCH', '/api/meetings/:id', meetings.update],
   ['DELETE', '/api/meetings/:id', meetings.remove],
   ['POST', '/api/meetings/:id/open', meetings.open],
@@ -97,6 +111,10 @@ async function handleApi(request, env, url) {
       };
       if (!route.isPublic) ctx.auth = await authenticate(ctx);
       const result = await route.handler(ctx);
+      if (result instanceof Response) {
+        for (const [k, val] of Object.entries(cors)) result.headers.set(k, val);
+        return result;
+      }
       return json(result, 200, cors);
     }
     throw pathMatched ? new HttpError(405, 'Metode tidak diizinkan', 'method_not_allowed') : new HttpError(404, 'Endpoint tidak ditemukan', 'not_found');

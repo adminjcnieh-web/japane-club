@@ -31,6 +31,7 @@ export async function history(ctx) {
   const user = await ctx.fs.get(`users/${uid}`);
   if (!user) throw new HttpError(404, 'Anggota tidak ditemukan', 'not_found');
   const records = (await ctx.fs.query('attendance', { where: [['uid', '==', uid]] }))
+    .filter((r) => !r.meetingDeleted)
     .sort((a, b) => (a.meetingDate < b.meetingDate ? 1 : -1));
   return { member: userOut(user), summary: tally(records), records: records.map(recordOut) };
 }

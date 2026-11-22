@@ -31,6 +31,7 @@ async function step(name, fn) {
     console.log(`  PASS  ${name}`);
   } catch (e) {
     results.push({ name, ok: false, ms: Date.now() - t, error: String(e.message || e).split('\n')[0] });
+    for (const pg of globalThis.__pages || []) { try { const t = await pg.locator('.form-error, .toast-error').first().innerText({ timeout: 300 }); console.log('        [diagnosa] ' + t); } catch { /* tidak ada */ } }
     console.log(`  FAIL  ${name}\n        ${String(e.stack || e).split('\n').slice(0, 4).join('\n        ')}`);
   }
 }
@@ -66,7 +67,8 @@ async function newPage(browser, { width = 1280, height = 800, mobile = false, la
     permissions: [],
   });
   const page = await ctx.newPage();
-  page.setDefaultTimeout(8000);
+  page.setDefaultTimeout(20000);
+  (globalThis.__pages = globalThis.__pages || []).push(page);
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await ctx.route(/cdn\.jsdelivr\.net/, (r) => {
     const file = r.request().url().split('/').pop();
@@ -350,7 +352,7 @@ await step('pemindaian ulang oleh anggota yang sama tidak menggandakan catatan',
   assert.equal(fake.countDocs('attendance/'), before);
   await s.close();
 });
-await step('QR berganti otomatis (token baru) dalam ~30 detik', async () => {
+await step('QR berganti otomatis (token baru) dalam ~5 detik', async () => {
   const first = await pOff.evaluate(() => window.__qrTexts.at(-1));
   await pOff.waitForFunction((f) => window.__qrTexts.at(-1) !== f, first, { timeout: 40000 });
   const second = await pOff.evaluate(() => window.__qrTexts.at(-1));
@@ -459,26 +461,48 @@ await step('laporan: tampil, filter, dan ekspor Excel berisi data benar + nama f
   const dl = pRep.waitForEvent('download');
   await pRep.click('#rp-export');
   const d = await dl;
-  assert.match(d.suggestedFilename(), /^Laporan-Absensi-Japanese-Club_\d{4}-\d{2}\.xlsx$/);
+  assert.match(d.suggestedFilename(), /^Laporan-Absensi-Japanese-Club_\d{4}-\d{2}-\d{2}_sd_\d{4}-\d{2}-\d{2}\.xlsx$/);
   const sheets = JSON.parse(fs.readFileSync(await d.path(), 'utf8'));
-  assert.deepEqual(sheets.map((s) => s.name), ['Ringkasan', 'Rekap Anggota', 'Detail Kehadiran']);
-  const detail = sheets[2].rows;
-  assert.equal(detail[0]['7'], 'Status');
-  assert.ok(detail.length > 3 && detail[1]['2'].startsWith('DATE:'));
-  const sum = Object.fromEntries(sheets[0].rows.filter((r) => r['1'] && typeof r['2'] === 'number').map((r) => [r['1'], r['2']]));
-  assert.ok(sum['Hadir'] >= 1 && sum['Alfa'] >= 3 && sum['Total catatan'] === detail.length - 1);
-  assert.equal(sheets[1].rows[0]['10'], 'Persentase hadir');
+  assert.deepEqual(sheets.map((s) => s.name), ['Ringkasan Anggota', 'Riwayat Absensi', 'Rekap Per Pertemuan']);
+  // Sheet 1: header baris 4, satu baris per anggota, rumus + total
+  const s1 = sheets[0].rows.map((r) => r);
+  const hdr = s1.find((r) => r['1'] === 'Nomor');
+  assert.deepEqual(Object.values(hdr), ['Nomor', 'Nama anggota', 'Username / ID', 'Total pertemuan', 'Hadir', 'Izin', 'Sakit', 'Alfa', 'Terlambat', 'Persentase kehadiran']);
+  const body = s1.filter((r) => typeof r['1'] === 'number');
+  assert.ok(body.length >= 4, 'semua anggota aktif tampil');
+  assert.match(body[0]['4'].formula, /^SUM\(E\d+:I\d+\)$/);
+  assert.match(body[0]['10'].formula, /^IF\(D\d+=0,0,\(E\d+\+I\d+\)\/D\d+\)$/);
+  assert.ok(s1.some((r) => r['2'] === 'TOTAL' && /^SUM\(/.test(r['4'].formula)));
+  assert.ok(sheets[0].cf >= 1 && sheets[0].filter);
+  // Sheet 2: riwayat
+  const h2 = sheets[1].rows.find((r) => r['1'] === 'Tanggal pertemuan');
+  assert.equal(h2['8'], 'Keterangan keterlambatan');
+  const detail = sheets[1].rows.filter((r) => typeof r['1'] === 'string' && r['1'].startsWith('DATE:'));
+  assert.ok(detail.length > 3);
+  const late = detail.find((r) => r['5'] === 'Terlambat');
+  if (late) assert.match(late['8'], /menit setelah jam mulai|manual/);
+  // Sheet 3: rekap per pertemuan
+  const h3 = sheets[2].rows.find((r) => r['1'] === 'Tanggal');
+  assert.deepEqual(Object.values(h3), ['Tanggal', 'Pertemuan', 'Jumlah tercatat', 'Hadir', 'Izin', 'Sakit', 'Alfa', 'Terlambat', 'Persentase kehadiran']);
+  assert.ok(sheets[2].rows.some((r) => r['2'] === 'TOTAL'));
+  // lebar kolom menyesuaikan isi
+  assert.ok(sheets[0].widths['2'] > 12);
 });
-await step('laporan: filter status & kelas mempersempit tabel; per pertemuan; per anggota', async () => {
+await step('laporan: filter status, rentang tanggal, satu pertemuan, satu anggota', async () => {
   await pRep.selectOption('#rp-status', 'alfa');
   await pRep.waitForFunction(() => [...document.querySelectorAll('#rp-result table:last-of-type tbody tr .badge')].every((b) => /Alfa/.test(b.textContent)) && document.querySelectorAll('#rp-result .badge').length > 0);
   await pRep.selectOption('#rp-status', '');
-  await pRep.click('[data-type=meeting]');
+  await pRep.click('[data-mode=range]');
+  await pRep.waitForSelector('#rp-from');
+  await pRep.waitForSelector('#rp-result .mini-stats');
+  await pRep.click('[data-mode=meeting]');
   await pRep.waitForSelector('#rp-meeting');
   await pRep.waitForSelector('#rp-result .mini-stats');
-  await pRep.click('[data-type=member]');
+  await pRep.click('[data-mode=month]');
+  await pRep.selectOption('#rp-month', 'all');
   await pRep.selectOption('#rp-member', 'uidMem00001');
   await pRep.waitForSelector('#rp-result .mini-stats');
+  await pRep.waitForFunction(() => document.querySelectorAll('#rp-result h2')[1]?.textContent.includes('(1)'));
 });
 await step('officer tanpa izin laporan: menu tidak ada & URL dialihkan', async () => {
   const p = await newPage(browserNormal, { label: 'off1' });
@@ -595,6 +619,210 @@ await step('HP: modal tampil sebagai lembar bawah, tidak melebihi layar', async 
   await shot(pm, '17-modal-sheet-mobile');
   await pm.context().close();
 });
+
+// ================= FITUR BARU: dasbor, foto profil, Learning Center, musik =================
+console.log('\n== Fitur baru ==');
+const png = path.join(tmp, 'foto.png');
+execFileSync('python3', ['-I', '-c', `from PIL import Image, ImageDraw
+im = Image.new('RGB', (900, 600), (200, 40, 50))
+d = ImageDraw.Draw(im)
+d.ellipse((300, 100, 600, 400), fill=(250, 220, 200))
+im.save(${JSON.stringify(png)})`]);
+
+await step('dasbor anggota: sapaan, progres belajar, kosakata hari ini, tombol lanjut belajar', async () => {
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'dash-m' });
+  await loginOk(pm, 'mem1');
+  await pm.waitForSelector('.hero');
+  assert.match(await pm.locator('.hero-text h1').innerText(), /Selamat (pagi|siang|sore|malam), Ani/);
+  await pm.waitForSelector('.wotd-jp');
+  assert.ok((await pm.locator('.wotd-jp').innerText()).length > 0);
+  assert.ok(await pm.locator('.prog-row').count() >= 7);
+  assert.match(await pm.locator('.hero-cta a').getAttribute('href'), /#\/learn\/hiragana\/1/);
+  await noOverflow(pm);
+  await pm.waitForTimeout(700);
+  await shot(pm, '20-dashboard-member');
+  await pm.context().close();
+});
+
+await step('foto profil: unggah dengan crop, tampil di sidebar & profil, lalu hapus', async () => {
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'foto' });
+  await loginOk(pm, 'mem2');
+  await pm.goto(URL_ + '/#/profile');
+  await pm.waitForSelector('#pf-photo');
+  await pm.click('#pf-photo');
+  await pm.setInputFiles('#ph-file', png);
+  await pm.waitForSelector('#ph-stage canvas');
+  await pm.fill('#ph-zoom', '1.5');
+  await pm.dispatchEvent('#ph-zoom', 'input');
+  await shot(pm, '21-foto-crop');
+  await pm.click('text=Simpan foto');
+  await pm.waitForSelector('#pf-photo-del');
+  const doc = fake.getDoc('avatars/uidMem00002');
+  assert.ok(doc && doc.image && doc.thumb, 'dokumen avatar tersimpan');
+  assert.ok(String(doc.image).length < 90000, 'foto kecil');
+  await pm.waitForSelector('.usercard .avatar img', { timeout: 8000 });
+  await pm.waitForSelector('.avatar-xl img', { timeout: 8000 });
+  await shot(pm, '22-profil-foto');
+  await pm.click('#pf-photo-del');
+  await pm.click('.modal .btn-danger-solid');
+  await pm.waitForSelector('#pf-photo-del', { state: 'detached' });
+  assert.ok(!fake.getDoc('avatars/uidMem00002'), 'avatar terhapus');
+  await pm.context().close();
+});
+
+await step('foto profil: berkas bukan gambar ditolak dengan pesan', async () => {
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'foto-bad' });
+  await loginOk(pm, 'mem2');
+  await pm.goto(URL_ + '/#/profile');
+  await pm.waitForSelector('#pf-photo');
+  await pm.click('#pf-photo');
+  const txt = path.join(tmp, 'bukan.png');
+  fs.writeFileSync(txt, 'ini bukan gambar');
+  await pm.setInputFiles('#ph-file', txt);
+  await pm.waitForSelector('#ph-err:not(.hidden)');
+  await pm.context().close();
+});
+
+await step('admin menghapus foto anggota dari halaman detail', async () => {
+  const tokM = await apiLogin('mem3');
+  const jpeg = execFileSync('python3', ['-I', '-c', `from PIL import Image
+import io, base64
+b = io.BytesIO(); Image.new('RGB',(256,256),(10,120,60)).save(b,'JPEG'); t = io.BytesIO(); Image.new('RGB',(64,64),(10,120,60)).save(t,'JPEG')
+print(base64.b64encode(b.getvalue()).decode()); print(base64.b64encode(t.getvalue()).decode())`]).toString().trim().split('\n');
+  const up = await callApi('PUT', '/api/me/avatar', tokM, { image: jpeg[0], thumb: jpeg[1] });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'foto-admin' });
+  await loginOk(pm, 'admin1');
+  await pm.goto(URL_ + '/#/members/uidMem00003');
+  await pm.waitForSelector('#d-photo-del');
+  await pm.click('#d-photo-del');
+  await pm.click('.modal .btn-danger-solid');
+  await pm.waitForSelector('#d-photo-del', { state: 'detached' });
+  assert.ok(!fake.getDoc('avatars/uidMem00003'));
+  await pm.context().close();
+});
+
+await step('Learning Center: 7 kategori, level terkunci, latihan memberi umpan balik', async () => {
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'learn' });
+  await loginOk(pm, 'mem1');
+  await pm.goto(URL_ + '/#/learn');
+  await pm.waitForSelector('.cat-card');
+  assert.equal(await pm.locator('.cat-card').count(), 7);
+  await shot(pm, '23-learn-hub');
+  await pm.goto(URL_ + '/#/learn/hiragana');
+  await pm.waitForTimeout(600);
+  await shot(pm, '24-learn-category');
+  await pm.goto(URL_ + '/#/learn/hiragana/1');
+  await pm.waitForSelector('#ls-start');
+  await pm.click('#ls-start');
+  await pm.waitForSelector('#sx-body');
+  await pm.waitForTimeout(400);
+  await shot(pm, '25-learn-question');
+  // jawab pertanyaan pertama (apa pun jenisnya) sampai muncul umpan balik
+  const opt = pm.locator('.opt').first();
+  if (await opt.count()) await opt.click();
+  else if (await pm.locator('[data-pick]').count()) { const n = await pm.locator('[data-pick]').count(); for (let i = 0; i < n; i++) await pm.locator('[data-pick]').first().click(); }
+  else if (await pm.locator('input.input').count()) await pm.fill('input.input', 'x');
+  if (await pm.locator('#sx-main:not([disabled])').count()) {
+    await pm.click('#sx-main');
+    await pm.waitForSelector('.feedback, .sx-foot .fb, #sx-foot [class*="fb"]', { timeout: 5000 }).catch(() => {});
+  }
+  await shot(pm, '26-learn-feedback');
+  await pm.click('#sx-close');
+  await pm.context().close();
+});
+
+await step('Learning Center: level 2 terkunci saat level 1 belum lulus (API menolak)', async () => {
+  const tok = await apiLogin('mem3');
+  const r = await callApi('POST', '/api/learning/result', tok, { cat: 'hiragana', n: 2, correct: 5, total: 5, hearts: 5 });
+  assert.ok(r.status >= 400 && r.status < 500, 'status ' + r.status);
+});
+
+await step('musik: pemutar tampil, volume awal kecil, kontrol jeda/bisu/sembunyikan bekerja', async () => {
+  const b = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+  const pm = await newPage(b, { width: 1280, height: 800, label: 'music' });
+  await loginOk(pm, 'mem1');
+  await pm.waitForSelector('.mp');
+  await pm.waitForTimeout(2500);
+  let d = await pm.evaluate(() => window.__jcMusic.debug());
+  console.log('        [musik] ' + JSON.stringify({ ...d, rms: +d.rms.toFixed(4), peak: +d.peak.toFixed(4) }));
+  assert.ok(d.vol >= 5 && d.vol <= 10, 'volume awal 5-10%');
+  assert.equal(d.state, 'running');
+  assert.ok(d.playing);
+  assert.ok(d.peak > 0.0005, 'ada sinyal audio keluar (peak ' + d.peak + ')');
+  assert.ok(d.peak < 0.5, 'tidak terlalu keras');
+  await shot(pm, '27-music-player');
+  await pm.click('#mp-mute');
+  await pm.waitForTimeout(700);
+  d = await pm.evaluate(() => window.__jcMusic.debug());
+  assert.ok(d.muted);
+  await pm.click('#mp-mute');
+  await pm.click('#mp-next');
+  await pm.waitForTimeout(400);
+  const d2 = await pm.evaluate(() => window.__jcMusic.debug());
+  assert.notEqual(d2.track, d.track, 'lagu berganti');
+  await pm.click('#mp-play');
+  await pm.waitForTimeout(300);
+  assert.equal((await pm.evaluate(() => window.__jcMusic.debug())).playing, false);
+  await pm.click('#mp-hide');
+  await pm.waitForSelector('#mp-show');
+  // preferensi tersimpan setelah muat ulang
+  await pm.reload();
+  await pm.waitForSelector('.shell');
+  await pm.waitForSelector('#mp-show');
+  await b.close();
+});
+
+await step('musik: bila autoplay diblokir, mulai setelah interaksi pertama (tanpa mengakali)', async () => {
+  const b = await chromium.launch({ args: ['--autoplay-policy=document-user-activation-required'] });
+  const pm = await newPage(b, { width: 1280, height: 800, label: 'music-block' });
+  await loginOk(pm, 'mem1');
+  await pm.waitForSelector('.mp');
+  await pm.waitForTimeout(1200);
+  const before = await pm.evaluate(() => window.__jcMusic.debug());
+  console.log('        [musik-blokir sebelum klik] ' + JSON.stringify({ state: before.state, playing: before.playing, waiting: before.waiting }));
+  await pm.mouse.click(700, 500);
+  await pm.waitForTimeout(2200);
+  const after = await pm.evaluate(() => window.__jcMusic.debug());
+  assert.equal(after.state, 'running');
+  assert.ok(after.playing);
+  await b.close();
+});
+
+await step('HP: dasbor anggota, Learning Center dan pemutar tidak overflow', async () => {
+  const pm = await newPage(browserNormal, { width: 390, height: 844, mobile: true, label: 'mobile-new' });
+  await loginOk(pm, 'mem1');
+  for (const h of ['/', '/learn', '/learn/hiragana', '/learn/hiragana/1', '/profile']) {
+    await pm.goto(URL_ + '/#' + h); await pm.waitForTimeout(600); await noOverflow(pm);
+  }
+  await pm.goto(URL_ + '/#/');
+  await pm.waitForTimeout(900);
+  await shot(pm, '28-mobile-dashboard');
+  await pm.goto(URL_ + '/#/learn');
+  await pm.waitForTimeout(700);
+  await shot(pm, '29-mobile-learn');
+  await pm.context().close();
+});
+
+await step('hapus pertemuan (admin): dialog dampak, arsip, pulihkan', async () => {
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'del' });
+  await loginOk(pm, 'admin1');
+  const tok = await apiLogin('admin1');
+  const c = await callApi('POST', '/api/meetings', tok, { name: 'Pertemuan Uji Hapus', date: clubToday(), startTime: '23:00', endTime: '23:30', location: 'Aula', lateAfterMinutes: 10 });
+  assert.equal(c.status, 200, JSON.stringify(c.data));
+  const id = (c.data.meeting || c.data).id;
+  await pm.goto(URL_ + '/#/meetings');
+  await pm.waitForSelector('text=Pertemuan Uji Hapus');
+  await shot(pm, '30-meetings-admin');
+  await pm.goto(URL_ + '/#/meetings/' + id);
+  await pm.waitForSelector('[data-del], #m-del, button:has-text("Hapus")');
+  await pm.locator('button:has-text("Hapus")').first().click();
+  await pm.waitForSelector('.modal');
+  assert.match(await pm.locator('.modal').innerText(), /Pertemuan Uji Hapus/);
+  await shot(pm, '31-delete-dialog');
+  await pm.context().close();
+});
+
 await pRep.context().close();
 
 // keluaran

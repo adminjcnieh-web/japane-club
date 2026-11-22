@@ -305,11 +305,11 @@ describe('QR dinamis & absensi', () => {
     const mem2 = await login('mem2');
     const qr = await api('GET', `/api/meetings/${id}/qr`, { token: off });
 
-    mock.timers.tick(31000); // satu jendela berlalu -> masih diterima
+    mock.timers.tick(6000); // satu jendela (5 dtk) berlalu -> masih diterima
     const ok = await api('POST', '/api/attendance/scan', { token: mem1, body: { token: qr.data.token } });
     assert.equal(ok.status, 200);
 
-    mock.timers.tick(31000); // dua jendela berlalu -> kedaluwarsa
+    mock.timers.tick(10000); // total 16 dtk -> kedaluwarsa
     const old = await api('POST', '/api/attendance/scan', { token: mem2, body: { token: qr.data.token } });
     assert.equal(old.status, 410);
     assert.equal(old.data.error.code, 'qr_expired');
@@ -473,7 +473,77 @@ describe('Pertemuan', () => {
     assert.equal((await api('DELETE', `/api/meetings/${id}`, { token: admin })).status, 200);
     const id2 = (await api('POST', '/api/meetings', { token: off, body: meetingBody() })).data.meeting.id;
     await api('POST', `/api/meetings/${id2}/open`, { token: off });
-    assert.equal((await api('DELETE', `/api/meetings/${id2}`, { token: admin })).status, 409);
+    // Pertemuan yang sedang berjalan sekarang juga boleh diarsipkan (soft delete).
+    assert.equal((await api('DELETE', `/api/meetings/${id2}`, { token: admin })).status, 200);
+  });
+
+  test('QR berganti tiap 5 detik', async () => {
+    const off = await login('off1');
+    const id = (await api('POST', '/api/meetings', { token: off, body: meetingBody() })).data.meeting.id;
+    await api('POST', `/api/meetings/${id}/open`, { token: off });
+    const a = await api('GET', `/api/meetings/${id}/qr`, { token: off });
+    assert.equal(a.data.windowSeconds, 5);
+    mock.timers.tick(5000);
+    const b = await api('GET', `/api/meetings/${id}/qr`, { token: off });
+    assert.notEqual(a.data.token, b.data.token);
+  });
+
+  test('hapus (arsip), dampak, pulihkan, hapus permanen, dan audit', async () => {
+    const off = await login('off1');
+    const admin = await login('admin1');
+    const mem = await login('mem1');
+    const id = (await api('POST', '/api/meetings', { token: off, body: meetingBody() })).data.meeting.id;
+    await api('POST', `/api/meetings/${id}/open`, { token: off });
+    const qr = await api('GET', `/api/meetings/${id}/qr`, { token: off });
+    await api('POST', '/api/attendance/scan', { token: mem, body: { token: qr.data.token } });
+    const other = (await api('POST', '/api/meetings', { token: off, body: meetingBody({ name: 'Pertemuan Lain' }) })).data.meeting.id;
+
+    // hanya admin
+    assert.equal((await api('GET', `/api/meetings/${id}/impact`, { token: off })).status, 403);
+    assert.equal((await api('GET', '/api/meetings/archive', { token: off })).status, 403);
+    assert.equal((await api('POST', `/api/meetings/${id}/purge`, { token: admin, body: { confirmName: 'x' } })).status, 409);
+
+    const imp = await api('GET', `/api/meetings/${id}/impact`, { token: admin });
+    assert.equal(imp.data.attendanceCount, 1);
+    assert.equal(imp.data.qrActive, true);
+
+    assert.equal((await api('DELETE', `/api/meetings/${id}`, { token: off })).status, 403);
+    const del = await api('DELETE', `/api/meetings/${id}`, { token: admin });
+    assert.equal(del.data.archivedRecords, 1);
+
+    // hilang dari semua tampilan, pertemuan lain tidak tersentuh
+    assert.deepEqual((await api('GET', '/api/meetings', { token: off })).data.meetings.map((m) => m.id), [other]);
+    assert.equal((await api('GET', `/api/meetings/${id}`, { token: off })).status, 404);
+    assert.equal((await api('GET', `/api/meetings/${id}/qr`, { token: off })).status, 404);
+    const dash = await api('GET', '/api/dashboard', { token: mem });
+    assert.equal(dash.data.summary.total, 0);
+    const rep = await api('GET', '/api/reports?from=2026-11-01&to=2026-11-30', { token: off });
+    assert.equal(rep.status === 200 ? rep.data.rows.length : 0, 0);
+    assert.equal((await api('GET', `/api/members/${(await api('GET', '/api/me', { token: mem })).data.user.uid}/attendance`, { token: mem })).data.records.length, 0);
+    // QR lama tidak bisa dipakai
+    const mem2 = await login('mem2');
+    assert.equal((await api('POST', '/api/attendance/scan', { token: mem2, body: { token: qr.data.token } })).status, 404);
+
+    const arc = await api('GET', '/api/meetings/archive', { token: admin });
+    assert.equal(arc.data.meetings.length, 1);
+    assert.equal(arc.data.meetings[0].attendanceCount, 1);
+
+    // pulihkan
+    assert.equal((await api('POST', `/api/meetings/${id}/restore`, { token: admin })).status, 200);
+    assert.equal((await api('GET', '/api/dashboard', { token: mem })).data.summary.total, 1);
+    assert.equal((await api('POST', `/api/meetings/${id}/restore`, { token: admin })).status, 409);
+
+    // hapus permanen: harus diarsipkan dulu + ketik nama
+    await api('DELETE', `/api/meetings/${id}`, { token: admin });
+    assert.equal((await api('POST', `/api/meetings/${id}/purge`, { token: admin, body: { confirmName: 'salah' } })).status, 400);
+    assert.equal((await api('POST', `/api/meetings/${id}/purge`, { token: admin, body: { confirmName: 'Latihan Hiragana' } })).status, 200);
+    assert.equal(fake.getDoc(`meetings/${id}`), null);
+    assert.equal(fake.getDoc(`attendance/${id}_uidMem00001`), null);
+
+    const actions = fake.listDocs ? null : null;
+    const dashAdmin = await api('GET', '/api/dashboard', { token: admin });
+    const acts = dashAdmin.data.activity.map((a) => a.action);
+    for (const a of ['meeting.delete', 'meeting.restore', 'meeting.purge']) assert.ok(acts.includes(a), a);
   });
 });
 
@@ -609,5 +679,121 @@ describe('Keamanan umum', () => {
     const mk = (origin) => worker.fetch(new Request('https://club.test/api/health', { headers: { origin } }), { ...env, ALLOWED_ORIGINS: 'http://localhost:3000' });
     assert.equal((await mk('https://jahat.example')).headers.get('access-control-allow-origin'), null);
     assert.equal((await mk('http://localhost:3000')).headers.get('access-control-allow-origin'), 'http://localhost:3000');
+  });
+});
+
+
+// ---------- Foto profil ----------
+function fakeJpeg(w, h, extra = 0) {
+  const b = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+    0xff, 0xc0, 0x00, 0x0b, 0x08, h >> 8, h & 255, w >> 8, w & 255, 0x01, 0x01, 0x11, 0x00];
+  for (let i = 0; i < extra; i++) b.push(0x11);
+  b.push(0xff, 0xd9);
+  return Buffer.from(b).toString('base64');
+}
+
+describe('Foto profil', () => {
+  test('simpan, ganti, tampilkan, hapus; hanya milik sendiri; admin bisa moderasi', async () => {
+    const mem = await login('mem1');
+    const mem2 = await login('mem2');
+    const admin = await login('admin1');
+    const put = await api('PUT', '/api/me/avatar', { token: mem, body: { image: fakeJpeg(256, 256, 500), thumb: fakeJpeg(64, 64, 50) } });
+    assert.equal(put.status, 200);
+    assert.ok(put.data.user.avatarVer > 0);
+    assert.ok(fake.getDoc('avatars/uidMem00001'));
+    assert.equal(fake.getDoc('users/uidMem00001').avatarVer, put.data.user.avatarVer);
+    // gambar tersimpan di koleksi terpisah, bukan di dokumen users
+    assert.equal(fake.getDoc('users/uidMem00001').image, undefined);
+
+    // ditampilkan ke pengguna login mana pun, sebagai image/jpeg dan di-cache
+    const res = await worker.fetch(new Request('https://club.test/api/avatars/uidMem00001?size=thumb', { headers: { authorization: 'Bearer ' + mem2 } }), env);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/jpeg');
+    assert.match(res.headers.get('cache-control'), /immutable/);
+    assert.equal((await res.arrayBuffer()).byteLength, Buffer.from(fakeJpeg(64, 64, 50), 'base64').length);
+    // tanpa login ditolak
+    assert.equal((await worker.fetch(new Request('https://club.test/api/avatars/uidMem00001'), env)).status, 401);
+    assert.equal((await api('GET', '/api/avatars/uidMem00002', { token: mem })).status, 404);
+
+    // daftar anggota membawa avatarVer
+    const list = await api('GET', '/api/members', { token: admin });
+    assert.ok(list.data.members.find((m) => m.uid === 'uidMem00001').avatarVer);
+
+    // mem2 tidak bisa mengubah foto mem1 (tidak ada endpoint; PUT selalu milik sendiri)
+    await api('PUT', '/api/me/avatar', { token: mem2, body: { image: fakeJpeg(200, 200), thumb: fakeJpeg(64, 64) } });
+    assert.ok(fake.getDoc('avatars/uidMem00002'));
+    assert.equal(fake.getDoc('avatars/uidMem00001').image, fakeJpeg(256, 256, 500));
+    // anggota tidak boleh memakai endpoint moderasi admin
+    assert.equal((await api('DELETE', '/api/members/uidMem00001/avatar', { token: mem2 })).status, 403);
+    assert.equal((await api('DELETE', '/api/members/uidMem00001/avatar', { token: admin })).status, 200);
+    assert.equal(fake.getDoc('avatars/uidMem00001'), null);
+    assert.equal(fake.getDoc('users/uidMem00001').avatarVer, null);
+
+    assert.equal((await api('DELETE', '/api/me/avatar', { token: mem2 })).status, 200);
+    assert.equal(fake.getDoc('avatars/uidMem00002'), null);
+  });
+
+  test('validasi: bukan JPEG, terlalu besar, dimensi, base64 rusak, JSON terlalu besar', async () => {
+    const mem = await login('mem1');
+    const put = (body) => api('PUT', '/api/me/avatar', { token: mem, body });
+    const ok = fakeJpeg(256, 256);
+    const th = fakeJpeg(64, 64);
+    assert.equal((await put({ image: Buffer.from('<script>alert(1)</script>').toString('base64'), thumb: th })).status, 400); // bukan JPEG
+    assert.equal((await put({ image: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0]).toString('base64'), thumb: th })).status, 400); // PNG ditolak
+    assert.equal((await put({ image: fakeJpeg(256, 256, 61000), thumb: th })).status, 413);
+    assert.equal((await put({ image: fakeJpeg(2000, 2000), thumb: th })).status, 400);
+    assert.equal((await put({ image: ok, thumb: fakeJpeg(64, 64, 9000) })).status, 413);
+    assert.equal((await put({ image: 'bukan base64!!', thumb: th })).status, 400);
+    assert.equal((await put({ thumb: th })).status, 400);
+    assert.equal((await put({ image: 'A'.repeat(200000), thumb: th })).status, 413);
+    assert.equal(fake.getDoc('avatars/uidMem00001'), null);
+  });
+});
+
+
+// ---------- Learning Center ----------
+describe('Learning Center', () => {
+  test('manifest backend sama dengan isi materi di frontend', async () => {
+    const { LESSON_COUNTS } = await import('../../public/js/learn/data.js');
+    const { LESSON_COUNTS: server } = await import('../src/lib/learning-manifest.js');
+    assert.deepEqual(server, LESSON_COUNTS);
+  });
+
+  test('progres: urutan buka-kunci, skor terbaik, milik sendiri, jumlah nyawa di pengaturan', async () => {
+    const mem = await login('mem1');
+    const mem2 = await login('mem2');
+    const admin = await login('admin1');
+    const first = await api('GET', '/api/learning', { token: mem });
+    assert.equal(first.status, 200);
+    assert.deepEqual(first.data.lessons, {});
+    assert.equal(first.data.config.hearts, 5);
+
+    const rec = (token, body) => api('POST', '/api/learning/result', { token, body });
+    assert.equal((await rec(mem, { cat: 'hiragana', n: 2, correct: 8, total: 10, passed: true })).status, 409); // terkunci
+    const r1 = await rec(mem, { cat: 'hiragana', n: 1, correct: 7, total: 10, passed: true });
+    assert.equal(r1.status, 200);
+    assert.equal(r1.data.score, 70);
+    assert.equal(r1.data.unlockedNext, true);
+    // gagal tidak menurunkan status lulus dan skor terbaik dipertahankan
+    const r2 = await rec(mem, { cat: 'hiragana', n: 1, correct: 3, total: 10, passed: false });
+    assert.equal(r2.data.lessons['hiragana-1'].passed, true);
+    assert.equal(r2.data.lessons['hiragana-1'].best, 70);
+    assert.equal(r2.data.lessons['hiragana-1'].attempts, 2);
+    assert.equal((await rec(mem, { cat: 'hiragana', n: 2, correct: 10, total: 10, passed: true })).status, 200);
+
+    // validasi
+    assert.equal((await rec(mem, { cat: 'tidakada', n: 1, correct: 1, total: 1, passed: true })).status, 400);
+    assert.equal((await rec(mem, { cat: 'kanji', n: 99, correct: 1, total: 1, passed: true })).status, 400);
+    assert.equal((await rec(mem, { cat: 'kanji', n: 1, correct: 11, total: 10, passed: true })).status, 400);
+    // progres terpisah per anggota
+    assert.deepEqual((await api('GET', '/api/learning', { token: mem2 })).data.lessons, {});
+    assert.equal(fake.getDoc('learning/uidMem00001').last.cat, 'hiragana');
+
+    // pengaturan nyawa
+    const cur = (await api('GET', '/api/settings', { token: admin })).data.settings;
+    assert.equal((await api('PUT', '/api/settings', { token: admin, body: { ...cur, learningHearts: 0 } })).status, 400);
+    assert.equal((await api('PUT', '/api/settings', { token: admin, body: { ...cur, learningHearts: 3 } })).status, 200);
+    assert.equal((await api('GET', '/api/learning', { token: mem })).data.config.hearts, 3);
+    assert.equal((await api('PUT', '/api/settings', { token: mem, body: { ...cur, learningHearts: 9 } })).status, 403);
   });
 });

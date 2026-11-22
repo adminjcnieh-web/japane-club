@@ -30,10 +30,10 @@ function validateMeeting(b, defaults) {
   };
 }
 
-async function loadMeeting(ctx, id) {
+async function loadMeeting(ctx, id, { allowDeleted = false } = {}) {
   if (!/^[A-Za-z0-9]{8,40}$/.test(id)) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
   const m = await ctx.fs.get(`meetings/${id}`);
-  if (!m) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
+  if (!m || (m.deletedAt && !allowDeleted)) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
   return m;
 }
 
@@ -42,12 +42,12 @@ export async function list(ctx) {
   const today = localDate(ctx.now.getTime(), offset);
   const from = ctx.url.searchParams.get('from') ? v.dateStr(ctx.url.searchParams.get('from'), 'from') : addDays(today, -120);
   const to = ctx.url.searchParams.get('to') ? v.dateStr(ctx.url.searchParams.get('to'), 'to') : addDays(today, 365);
-  const meetings = (await ctx.fs.query('meetings', { where: [['date', '>=', from], ['date', '<=', to]] })).sort((a, b) =>
+  const meetings = (await ctx.fs.query('meetings', { where: [['date', '>=', from], ['date', '<=', to]] })).filter((m) => !m.deletedAt).sort((a, b) =>
     a.date === b.date ? a.startTime.localeCompare(b.startTime) : a.date.localeCompare(b.date),
   );
 
   if (isStaff(ctx.auth.user)) {
-    const records = await ctx.fs.query('attendance', { where: [['meetingDate', '>=', from], ['meetingDate', '<=', to]] });
+    const records = (await ctx.fs.query('attendance', { where: [['meetingDate', '>=', from], ['meetingDate', '<=', to]] })).filter((r) => !r.meetingDeleted);
     const byMeeting = new Map();
     for (const r of records) {
       if (!byMeeting.has(r.meetingId)) byMeeting.set(r.meetingId, []);
@@ -55,7 +55,7 @@ export async function list(ctx) {
     }
     return { meetings: meetings.map((m) => ({ ...meetingOut(m), counts: tally(byMeeting.get(m.id) || []) })) };
   }
-  const mine = await ctx.fs.query('attendance', { where: [['uid', '==', ctx.auth.uid]] });
+  const mine = (await ctx.fs.query('attendance', { where: [['uid', '==', ctx.auth.uid]] })).filter((r) => !r.meetingDeleted);
   const mineBy = new Map(mine.map((r) => [r.meetingId, r]));
   return { meetings: meetings.map((m) => ({ ...meetingOut(m), myStatus: mineBy.get(m.id)?.status || null })) };
 }
@@ -203,18 +203,87 @@ export async function close(ctx) {
   return { meeting: meetingOut({ ...m, ...patch }), markedAbsent };
 }
 
+async function attendanceOf(ctx, meetingId) {
+  return ctx.fs.query('attendance', { where: [['meetingId', '==', meetingId]] });
+}
+
+async function writeInChunks(ctx, writes) {
+  for (let i = 0; i < writes.length; i += 400) await ctx.fs.commit(writes.slice(i, i + 400));
+}
+
+/** Analisis dampak sebelum menghapus (hanya admin). */
+export async function impact(ctx) {
+  requireRole(ctx, 'admin');
+  const m = await loadMeeting(ctx, ctx.params.id, { allowDeleted: true });
+  const records = await attendanceOf(ctx, m.id);
+  return {
+    meeting: meetingOut(m),
+    attendanceCount: records.length,
+    counts: tally(records),
+    qrActive: m.status === 'open' && !m.deletedAt,
+    effects: [
+      'Pertemuan hilang dari daftar, jadwal, dasbor, dan riwayat anggota.',
+      'Catatan absensi disimpan tetapi tidak ikut laporan Excel dan statistik.',
+      m.status === 'open' ? 'QR absensi yang sedang aktif langsung tidak berlaku.' : 'QR absensi pertemuan ini tidak berlaku lagi.',
+      'Bisa dipulihkan dari halaman Arsip.',
+    ],
+  };
+}
+
+/** Soft delete: pertemuan diarsipkan, bukan dibuang. Hanya admin. */
 export async function remove(ctx) {
   requireRole(ctx, 'admin');
   const m = await loadMeeting(ctx, ctx.params.id);
-  const records = await ctx.fs.query('attendance', { where: [['meetingId', '==', m.id]], limit: 1 });
-  if (records.length || m.status !== 'scheduled') {
-    throw new HttpError(409, 'Pertemuan yang sudah berjalan atau memiliki riwayat absensi tidak bisa dihapus', 'has_history');
+  const records = await attendanceOf(ctx, m.id);
+  await ctx.fs.commit([
+    op.update(`meetings/${m.id}`, { deletedAt: ctx.now, deletedBy: ctx.auth.uid, deletedByName: ctx.auth.user.fullName, updatedAt: ctx.now }),
+    auditOp({ action: 'meeting.delete', actor: ctx.auth, meetingId: m.id, meetingName: m.name, detail: `${m.date}; ${records.length} catatan absensi diarsipkan` }, ctx.now),
+  ]);
+  await writeInChunks(ctx, records.map((r) => op.update(`attendance/${r.id}`, { meetingDeleted: true })));
+  return { ok: true, archivedRecords: records.length };
+}
+
+export async function archive(ctx) {
+  requireRole(ctx, 'admin');
+  const all = await ctx.fs.list('meetings');
+  const deleted = all.filter((m) => m.deletedAt).sort((a, b) => (a.deletedAt < b.deletedAt ? 1 : -1));
+  const out = [];
+  for (const m of deleted) {
+    const records = await attendanceOf(ctx, m.id);
+    out.push({ ...meetingOut(m), attendanceCount: records.length });
   }
+  return { meetings: out };
+}
+
+export async function restore(ctx) {
+  requireRole(ctx, 'admin');
+  const m = await loadMeeting(ctx, ctx.params.id, { allowDeleted: true });
+  if (!m.deletedAt) throw new HttpError(409, 'Pertemuan ini tidak ada di arsip', 'not_deleted');
+  const records = await attendanceOf(ctx, m.id);
+  await ctx.fs.commit([
+    op.update(`meetings/${m.id}`, { deletedAt: null, deletedBy: null, deletedByName: '', updatedAt: ctx.now }),
+    auditOp({ action: 'meeting.restore', actor: ctx.auth, meetingId: m.id, meetingName: m.name, detail: m.date }, ctx.now),
+  ]);
+  await writeInChunks(ctx, records.map((r) => op.update(`attendance/${r.id}`, { meetingDeleted: false })));
+  return { ok: true, meeting: meetingOut({ ...m, deletedAt: null, deletedByName: '' }) };
+}
+
+/** Hapus permanen: hanya dari arsip, harus mengetik nama pertemuan. */
+export async function purge(ctx) {
+  requireRole(ctx, 'admin');
+  const m = await loadMeeting(ctx, ctx.params.id, { allowDeleted: true });
+  if (!m.deletedAt) throw new HttpError(409, 'Arsipkan pertemuan lebih dulu sebelum menghapus permanen', 'not_archived');
+  const b = await ctx.json();
+  if (typeof b.confirmName !== 'string' || b.confirmName.trim() !== m.name) {
+    throw new HttpError(400, 'Nama pertemuan yang diketik tidak sama', 'confirm_mismatch');
+  }
+  const records = await attendanceOf(ctx, m.id);
+  await writeInChunks(ctx, records.map((r) => op.delete(`attendance/${r.id}`)));
   await ctx.fs.commit([
     op.delete(`meetings/${m.id}`),
-    auditOp({ action: 'meeting.delete', actor: ctx.auth, meetingId: m.id, meetingName: m.name }, ctx.now),
+    auditOp({ action: 'meeting.purge', actor: ctx.auth, meetingId: m.id, meetingName: m.name, detail: `${m.date}; ${records.length} catatan dihapus permanen` }, ctx.now),
   ]);
-  return { ok: true };
+  return { ok: true, deletedRecords: records.length };
 }
 
 /** Token QR saat ini + perubahan daftar hadir sejak `since` (polling ringan). */
@@ -226,6 +295,8 @@ export async function qr(ctx) {
   if (m.status !== 'open') return { ...base, open: false, token: null, expiresAt: null, records: [] };
 
   const { token, expiresAt } = await makeToken(ctx.env.QR_SECRET, m.id, ctx.now.getTime());
+  // Token jendela berikutnya dikirim lebih dulu agar layar berganti tepat waktu tanpa menunggu jaringan.
+  const nxt = await makeToken(ctx.env.QR_SECRET, m.id, expiresAt);
   let records;
   if (sinceParam) {
     // Hemat pembacaan: hanya catatan yang berubah sejak polling terakhir (filter satu field, tanpa index khusus).
@@ -234,5 +305,5 @@ export async function qr(ctx) {
   } else {
     records = await ctx.fs.query('attendance', { where: [['meetingId', '==', m.id]] });
   }
-  return { ...base, open: true, token, expiresAt, records: records.map(recordOut) };
+  return { ...base, open: true, token, expiresAt, next: { token: nxt.token, expiresAt: nxt.expiresAt }, records: records.map(recordOut) };
 }

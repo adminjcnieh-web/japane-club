@@ -7,17 +7,22 @@ import { renderLogin } from './auth.js';
 import { toast, loadingBlock, errorState } from './ui.js';
 import { dashboardView } from './dashboard.js';
 import { membersView, memberDetailView } from './members.js';
-import { meetingsView, meetingDetailView } from './meetings.js';
+import { meetingsView, meetingDetailView, archiveView } from './meetings.js';
 import { qrStageView } from './attendance.js';
 import { scannerView } from './qr-scanner.js';
 import { announcementsView } from './announcements.js';
 import { scheduleView } from './schedule.js';
 import { reportsView } from './reports.js';
 import { profileView, settingsView, moreView } from './profile.js';
+import { avatar, initAvatars } from './avatar.js';
+import { initMusic } from './music.js';
+import { learnHubView, learnCatView, learnLessonView } from './learn/view.js';
+import { clearProgress } from './learn/progress.js';
 
 const root = document.getElementById('app');
 let user = null;
 let clubName = 'Japanese Club';
+let music = null;
 
 export const can = (u, perm) => u.role === 'admin' || (u.role === 'officer' && u.permissions?.[perm] === true);
 export const isStaff = (u) => u.role === 'admin' || u.role === 'officer';
@@ -27,6 +32,7 @@ function navFor(u) {
     return {
       side: [
         ['/', 'Beranda', 'dashboard'],
+        ['/learn', 'Belajar', 'book'],
         ['/scan', 'Scan absensi', 'scan'],
         ['/schedule', 'Jadwal', 'calendar'],
         ['/announcements', 'Pengumuman', 'megaphone'],
@@ -34,9 +40,9 @@ function navFor(u) {
       ],
       tabs: [
         ['/', 'Beranda', 'dashboard'],
-        ['/schedule', 'Jadwal', 'calendar'],
+        ['/learn', 'Belajar', 'book'],
         ['/scan', 'Scan', 'scan', true],
-        ['/announcements', 'Info', 'megaphone'],
+        ['/schedule', 'Jadwal', 'calendar'],
         ['/profile', 'Profil', 'user'],
       ],
     };
@@ -47,6 +53,7 @@ function navFor(u) {
     ['/members', 'Anggota', 'users'],
     ['/schedule', 'Jadwal', 'calendar'],
     ['/announcements', 'Pengumuman', 'megaphone'],
+    ['/learn', 'Belajar', 'book'],
   ];
   if (can(u, 'exportReports')) side.push(['/reports', 'Laporan', 'report']);
   const extra = [];
@@ -81,7 +88,7 @@ function shellHtml(u) {
         <div class="sidebar-foot">
           <div class="sidebar-wave" aria-hidden="true"></div>
           <div class="usercard">
-            <span class="avatar">${esc(initials(u.fullName))}</span>
+            ${avatar(u)}
             <div class="usercard-text"><div class="usercard-name">${esc(u.fullName)}</div><div class="usercard-role">${esc(ROLE_LABEL[u.role])}</div></div>
             <button class="btn btn-quiet btn-icon btn-sm" id="logout-btn" aria-label="Keluar" title="Keluar">${icon('logout')}</button>
           </div>
@@ -90,7 +97,7 @@ function shellHtml(u) {
       <div class="main">
         <header class="topbar">
           <a class="brand" href="#/"><span class="brand-mark"></span><span class="brand-name" id="club-name-m">${esc(clubName)}</span></a>
-          <a href="#/profile" class="avatar" aria-label="Profil saya">${esc(initials(u.fullName))}</a>
+          <a href="#/profile" aria-label="Profil saya" style="text-decoration:none">${avatar(u)}</a>
         </header>
         <main class="view" id="view" tabindex="-1"></main>
       </div>
@@ -112,6 +119,10 @@ function markActive(path) {
 async function mountApp() {
   root.innerHTML = shellHtml(user);
   document.getElementById('logout-btn').addEventListener('click', () => doLogout());
+  initAvatars();
+  music?.destroy();
+  music = initMusic();
+  window.__jcMusic = music; // dipakai pengujian
   const view = document.getElementById('view');
 
   const render = async () => {
@@ -151,6 +162,9 @@ async function refreshUser() {
 
 function doLogout(message) {
   mountApp.unmount?.();
+  music?.destroy();
+  music = null;
+  clearProgress();
   cleanupCurrent();
   api.logout();
   user = null;
@@ -170,6 +184,9 @@ function showLogin(notice = '') {
 }
 
 route('/', (c) => dashboardView(c));
+route('/learn', (c) => learnHubView(c));
+route('/learn/:cat', (c) => learnCatView(c));
+route('/learn/:cat/:n', (c) => learnLessonView(c));
 route('/scan', (c) => scannerView(c), { roles: ['member', 'officer', 'admin'] });
 route('/schedule', (c) => scheduleView(c));
 route('/announcements', (c) => announcementsView(c));
@@ -178,6 +195,7 @@ route('/more', (c) => moreView(c, { navFor, doLogout }), { roles: ['admin', 'off
 route('/members', (c) => membersView(c), { roles: ['admin', 'officer'] });
 route('/members/:uid', (c) => memberDetailView(c));
 route('/meetings', (c) => meetingsView(c), { roles: ['admin', 'officer'] });
+route('/meetings/archive', (c) => archiveView(c), { roles: ['admin'] });
 route('/meetings/:id', (c) => meetingDetailView(c), { roles: ['admin', 'officer'] });
 route('/meetings/:id/qr', (c) => qrStageView(c), { roles: ['admin', 'officer'] });
 route('/reports', (c) => (c.can('exportReports') ? reportsView(c) : (navigate('/', { replace: true }), null)), { roles: ['admin', 'officer'] });

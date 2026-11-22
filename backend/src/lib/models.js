@@ -17,6 +17,7 @@ export function userOut(u) {
       exportReports: !!u.permissions?.exportReports,
     },
     joinedAt: u.joinedAt || '',
+    avatarVer: u.avatarVer || null,
   };
 }
 
@@ -36,6 +37,8 @@ export function meetingOut(m) {
     createdAt: m.createdAt,
     openedAt: m.openedAt || null,
     closedAt: m.closedAt || null,
+    deletedAt: m.deletedAt || null,
+    deletedByName: m.deletedByName || '',
   };
 }
 
