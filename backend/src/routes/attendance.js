@@ -57,13 +57,15 @@ export async function scan(ctx) {
     updatedBy: uid,
     updatedByName: user.fullName,
     note: '',
+    signRequired: true, // wajib tanda tangan setelah scan
+    signed: false,
   };
   const audit = auditOp({ action: 'attendance.scan', actor: ctx.auth, targetUid: uid, targetName: user.fullName, meetingId, meetingName: meeting.name, detail: status }, ctx.now);
 
   try {
     // "create" gagal bila catatan sudah ada -> 1 anggota = 1 catatan per pertemuan.
     await ctx.fs.commit([op.create(path, record), audit]);
-    return { ok: true, duplicate: false, status, meetingName: meeting.name, message: status === 'hadir' ? 'Absensi berhasil dicatat' : 'Absensi dicatat sebagai terlambat' };
+    return { ok: true, duplicate: false, status, meetingId, meetingName: meeting.name, needsSignature: true, message: status === 'hadir' ? 'Absensi berhasil dicatat' : 'Absensi dicatat sebagai terlambat' };
   } catch (e) {
     if (!(e instanceof FirestoreError) || !CONFLICT_CODES.includes(e.code)) throw e;
   }
@@ -73,13 +75,13 @@ export async function scan(ctx) {
     // Sesi sempat ditutup (anggota ditandai Alfa otomatis) lalu dibuka lagi: boleh ditingkatkan.
     try {
       await ctx.fs.commit([op.update(path, { ...record, recordedAt: ctx.now }, existing._updateTime), audit]);
-      return { ok: true, duplicate: false, status, meetingName: meeting.name, message: 'Absensi berhasil dicatat' };
+      return { ok: true, duplicate: false, status, meetingId, meetingName: meeting.name, needsSignature: true, message: 'Absensi berhasil dicatat' };
     } catch (e) {
       if (!(e instanceof FirestoreError) || !CONFLICT_CODES.includes(e.code)) throw e;
     }
   }
   const final = (await ctx.fs.get(path)) || existing;
-  return { ok: true, duplicate: true, status: final?.status || status, meetingName: meeting.name, message: 'Kamu sudah tercatat di pertemuan ini' };
+  return { ok: true, duplicate: true, status: final?.status || status, meetingId, meetingName: meeting.name, needsSignature: !!(final && final.signRequired === true && !final.signed && (final.status === 'hadir' || final.status === 'terlambat')), message: 'Kamu sudah tercatat di pertemuan ini' };
 }
 
 /** Pengurus (dengan izin) mengubah/memasukkan status kehadiran. Setiap perubahan dicatat. */

@@ -241,6 +241,9 @@ export async function createFake() {
       const d = state.docs.get(path);
       return d ? decodeFields(d.fields) : null;
     },
+    putDoc(path, data) {
+      state.docs.set(path, { fields: encodeFields(data), updateTime: nextTime() });
+    },
     countDocs(prefix) {
       return [...state.docs.keys()].filter((k) => k.startsWith(prefix)).length;
     },

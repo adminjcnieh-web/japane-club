@@ -8,6 +8,7 @@ import { resetRateLimits } from '../src/lib/ratelimit.js';
 import { clearDashboardCache } from '../src/routes/dashboard.js';
 import { encode, decode, encodeFields, decodeFields } from '../src/lib/firestore.js';
 import { makeToken, verifyToken } from '../src/lib/qr-token.js';
+import zlib from 'node:zlib';
 
 const T0 = new Date('2026-11-19T03:00:00Z'); // 10:00 WIB
 let fake;
@@ -233,6 +234,105 @@ describe('Manajemen anggota', () => {
     assert.equal((await api('POST', '/api/members/uidMem00002/password', { token: admin, body: { newPassword: 'ResetBaru99' } })).status, 200);
     assert.equal((await api('POST', '/api/auth/login', { body: { username: 'mem2', password: 'ResetBaru99' } })).status, 200);
     assert.ok(fake.countDocs('audit/') >= 2);
+  });
+});
+
+
+// PNG kecil sungguhan (abu-abu 8 bit) untuk tes tanda tangan.
+function crc32(buf) { let c, crc = ~0; for (let n = 0; n < buf.length; n++) { c = (crc ^ buf[n]) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1; crc = (crc >>> 8) ^ c; } return ~crc >>> 0; }
+function pngB64(w = 120, h = 48) {
+  const chunk = (type, data) => { const t = Buffer.from(type); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(Buffer.concat([t, data]))); return Buffer.concat([len, t, data, crc]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 0;
+  const raw = Buffer.alloc((w + 1) * h, 255); for (let y = 0; y < h; y++) { raw[y * (w + 1)] = 0; for (let x = 10; x < w - 10; x++) if (Math.abs(y - (h / 2 + 8 * Math.sin(x / 7))) < 2) raw[y * (w + 1) + 1 + x] = 0; }
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]).toString('base64');
+}
+
+describe('Tanda tangan kehadiran', () => {
+  async function scanned() {
+    const off = await login('off1');
+    const c = await api('POST', '/api/meetings', { token: off, body: meetingBody({ startTime: '10:00', endTime: '23:00' }) });
+    const id = c.data.meeting.id;
+    await api('POST', `/api/meetings/${id}/open`, { token: off });
+    const qr = await api('GET', `/api/meetings/${id}/qr`, { token: off });
+    const mem = await login('mem1');
+    const sc = await api('POST', '/api/attendance/scan', { token: mem, body: { token: qr.data.token } });
+    return { off, id, mem, sc, qr };
+  }
+
+  test('scan menandai wajib tanda tangan; daftar tertunda; simpan sekali; tidak bisa ditimpa', async () => {
+    const { id, mem, sc } = await scanned();
+    assert.equal(sc.data.needsSignature, true);
+    assert.equal(sc.data.meetingId, id);
+    const p1 = await api('GET', '/api/signatures/pending', { token: mem });
+    assert.equal(p1.data.pending.length, 1);
+    assert.equal(p1.data.pending[0].meetingId, id);
+    const ok = await api('PUT', `/api/meetings/${id}/signature`, { token: mem, body: { image: pngB64() } });
+    assert.equal(ok.status, 200, JSON.stringify(ok.data));
+    assert.ok(fake.getDoc(`signatures/${id}_uidMem00001`).image);
+    assert.equal(fake.getDoc(`attendance/${id}_uidMem00001`).signed, true);
+    assert.equal((await api('GET', '/api/signatures/pending', { token: mem })).data.pending.length, 0);
+    const again = await api('PUT', `/api/meetings/${id}/signature`, { token: mem, body: { image: pngB64(100, 40) } });
+    assert.equal(again.status, 409);
+    assert.equal(again.data.error.code, 'already_signed');
+  });
+
+  test('scan ulang sebelum tanda tangan tetap meminta tanda tangan', async () => {
+    const { mem, qr } = await scanned();
+    const sc2 = await api('POST', '/api/attendance/scan', { token: mem, body: { token: qr.data.token } });
+    assert.equal(sc2.data.duplicate, true);
+    assert.equal(sc2.data.needsSignature, true);
+  });
+
+  test('validasi gambar: bukan PNG, terlalu besar, dimensi berlebih ditolak', async () => {
+    const { id, mem } = await scanned();
+    const put = (image) => api('PUT', `/api/meetings/${id}/signature`, { token: mem, body: { image } });
+    assert.equal((await put('')).status, 400);
+    assert.equal((await put('bukan base64 !!')).status, 400);
+    assert.equal((await put(Buffer.from('ini teks biasa bukan gambar png sama sekali, panjang cukup agar lolos cek ukuran minimal ya ya ya').toString('base64'))).status, 400);
+    assert.equal((await put(pngB64(1200, 100))).status, 400);
+    assert.equal((await put(Buffer.alloc(60000, 7).toString('base64'))).status, 413);
+    assert.equal(fake.getDoc(`signatures/${id}_uidMem00001`), null);
+  });
+
+  test('hanya yang hadir bisa menandatangani, dan hanya untuk dirinya sendiri', async () => {
+    const { id } = await scanned();
+    const mem2 = await login('mem2');
+    const r = await api('PUT', `/api/meetings/${id}/signature`, { token: mem2, body: { image: pngB64(), uid: 'uidMem00001' } });
+    assert.equal(r.status, 404);
+    assert.equal(fake.getDoc(`signatures/${id}_uidMem00001`), null);
+    assert.equal(fake.getDoc(`signatures/${id}_uidMem00002`), null);
+  });
+
+  test('catatan lama tanpa penanda tidak dipaksa tanda tangan', async () => {
+    const mem = await login('mem1');
+    fake.putDoc('attendance/oldmeeting1_uidMem00001', { meetingId: 'oldmeeting1', meetingName: 'Lama', meetingDate: '2026-10-01', uid: 'uidMem00001', status: 'hadir', method: 'qr' });
+    assert.equal((await api('GET', '/api/signatures/pending', { token: mem })).data.pending.length, 0);
+  });
+
+  test('data daftar hadir: anggota x pertemuan, ada gambar; anggota biasa ditolak', async () => {
+    const { off, id, mem } = await scanned();
+    await api('PUT', `/api/meetings/${id}/signature`, { token: mem, body: { image: pngB64() } });
+    assert.equal((await api('GET', '/api/reports/signatures?from=2026-11-01&to=2026-11-30', { token: mem })).status, 403);
+    const admin = await login('admin1');
+    const r = await api('GET', '/api/reports/signatures?from=2026-11-01&to=2026-11-30', { token: admin });
+    assert.equal(r.status, 200, JSON.stringify(r.data).slice(0, 200));
+    assert.ok(r.data.meetings.some((m) => m.id === id));
+    assert.ok(r.data.members.some((m) => m.uid === 'uidMem00001'));
+    assert.match(r.data.cells.uidMem00001[id].sig, /^iVBOR/);
+    assert.equal(r.data.cells.uidMem00001[id].signed, true);
+    const wide = await api('GET', '/api/reports/signatures?from=2025-01-01&to=2026-11-30', { token: admin });
+    assert.equal(wide.status, 400);
+  });
+
+  test('hapus permanen pertemuan ikut menghapus tanda tangannya', async () => {
+    const { id, mem } = await scanned();
+    await api('PUT', `/api/meetings/${id}/signature`, { token: mem, body: { image: pngB64() } });
+    const admin = await login('admin1');
+    await api('POST', `/api/meetings/${id}/close`, { token: admin });
+    assert.equal((await api('DELETE', `/api/meetings/${id}`, { token: admin })).status, 200);
+    const name = fake.getDoc(`meetings/${id}`).name;
+    assert.equal((await api('POST', `/api/meetings/${id}/purge`, { token: admin, body: { confirmName: name } })).status, 200);
+    assert.equal(fake.getDoc(`signatures/${id}_uidMem00001`), null);
   });
 });
 

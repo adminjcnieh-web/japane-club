@@ -20,7 +20,7 @@ let openCount = 0;
  * Membuka modal. Mengembalikan { el, close, body, setBusy }.
  * opts: { title, html, wide, footer:[{label, kind, onClick, close}], onClose }
  */
-export function openModal({ title, html = '', wide = false, footer = [], onClose, labelledBy = 'modal-title' }) {
+export function openModal({ title, html = '', wide = false, footer = [], onClose, labelledBy = 'modal-title', dismissible = true }) {
   const root = document.getElementById('modal-root');
   const overlay = document.createElement('div');
   overlay.className = 'overlay';
@@ -29,7 +29,7 @@ export function openModal({ title, html = '', wide = false, footer = [], onClose
     <div class="modal ${wide ? 'modal-wide' : ''}" role="dialog" aria-modal="true" aria-labelledby="${labelledBy}">
       <div class="modal-head">
         <h2 id="${labelledBy}">${esc(title)}</h2>
-        <button type="button" class="btn btn-quiet btn-icon btn-sm" data-close aria-label="Tutup">${icon('x')}</button>
+        ${dismissible ? `<button type="button" class="btn btn-quiet btn-icon btn-sm" data-close aria-label="Tutup">${icon('x')}</button>` : ''}
       </div>
       <div class="modal-body">${html}</div>
       ${footer.length ? `<div class="modal-foot"></div>` : ''}
@@ -76,7 +76,7 @@ export function openModal({ title, html = '', wide = false, footer = [], onClose
   function onKey(e) {
     if (e.key === 'Escape') {
       e.stopPropagation();
-      close();
+      if (dismissible) close();
     } else if (e.key === 'Tab') {
       const f = focusables();
       if (!f.length) return;
@@ -86,8 +86,8 @@ export function openModal({ title, html = '', wide = false, footer = [], onClose
     }
   }
   document.addEventListener('keydown', onKey, true);
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
-  overlay.querySelector('[data-close]').addEventListener('click', () => close());
+  if (dismissible) overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('[data-close]')?.addEventListener('click', () => close());
 
   const api = {
     el: overlay,

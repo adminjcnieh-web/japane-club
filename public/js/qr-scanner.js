@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { esc, loadScript, STATUS_LABEL, isApp } from './utils.js';
 import { LIBS } from './config.js';
 import { pageHead, statusBadge } from './ui.js';
+import { requireSignature } from './sign.js';
 
 const ERRORS_BY_CODE = {
   qr_expired: { title: 'QR sudah kedaluwarsa', text: 'QR berganti tiap 5 detik, jadi pindai QR yang sedang tampil dan jangan pakai foto lama. Arahkan kamera ke layar pengurus.' },
@@ -130,6 +131,12 @@ export async function scannerView({ container, isStale }) {
     try {
       const r = await api.post('/api/attendance/scan', { token });
       if (destroyed) return;
+      if (r.needsSignature) {
+        stop();
+        body.innerHTML = '<div class="loading-line"><span class="spinner"></span>Absensi tercatat. Silakan tanda tangan...</div>';
+        await requireSignature({ meetingId: r.meetingId, meetingName: r.meetingName });
+        if (destroyed) return;
+      }
       if (r.duplicate) showResult('ok', 'Kamu sudah tercatat', `${r.meetingName}. Tidak perlu absen lagi.`, r.status);
       else showResult(r.status === 'terlambat' ? 'late' : 'ok', r.status === 'terlambat' ? 'Tercatat terlambat' : 'Absensi berhasil', r.meetingName, r.status);
     } catch (e) {

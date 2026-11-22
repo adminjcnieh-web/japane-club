@@ -172,12 +172,15 @@ Pembaruan berikutnya: ubah file lalu jalankan `npx wrangler deploy` lagi.
 | **Beranda baru** | Sapaan sesuai jam (WIB), foto, ringkasan kehadiran, progres belajar, tombol *Lanjut belajar*, jadwal, dan *Kosakata hari ini*. |
 | **Musik latar** | Pemutar mini di kanan bawah (di HP: pil kecil di atas menu bawah). Putar/jeda, lagu berikut/sebelumnya, volume (awal 8%), bisu, sembunyikan. Musik dibuat langsung oleh browser (lo-fi dan suasana rumah teh, orisinal, tanpa file audio). Jika browser memblokir autoplay, musik mulai setelah sentuhan/klik pertama. Pengaturannya diingat. |
 | **Hapus pertemuan** (admin) | Tombol **Hapus** di detail pertemuan: tampil nama, tanggal, dan dampaknya (berapa catatan absensi). Pertemuan masuk **Arsip** (bisa dipulihkan). **Hapus permanen** harus mengetik nama pertemuan. Semua tercatat di log aktivitas. |
+| **Tanda tangan kehadiran** | Setelah scan, anggota **wajib** tanda tangan di layar (tidak bisa ditutup sebelum disimpan). Kalau aplikasi ditutup sebelum tanda tangan, kotaknya muncul lagi saat aplikasi dibuka. Tersimpan di Firestore (koleksi `signatures`, gambar PNG kecil). Satu tanda tangan per pertemuan, tidak bisa ditimpa. |
+| **Daftar hadir PDF** | Menu **Laporan → Daftar hadir (PDF)**: baris anggota, kolom pertemuan, isi = gambar tanda tangan. Kosong = tidak hadir; Izin/Sakit tertulis. Maksimal 3 bulan per file; lebih dari 8 pertemuan dibagi ke halaman berikutnya. Laporan Excel tetap ada (tombol **Unduh Excel**). |
 | **Excel baru** | Menu **Laporan**: filter bulan/tahun, rentang tanggal, dan anggota. File berisi 3 sheet: *Ringkasan Anggota*, *Riwayat Absensi*, *Rekap Per Pertemuan*, lengkap dengan rumus, warna status, dan filter. |
 | **Absensi hanya lewat APK** | Scan absensi hanya jalan di aplikasi (APK). Di browser biasa halaman scan memberi tahu untuk memakai aplikasi, dan server menolak (403 `app_required`). Tidak ada lagi unggah/foto QR, jadi QR tidak bisa dititipkan lewat foto. Lihat bagian 8c. |
 
 ### Koleksi Firestore baru (dibuat otomatis, tidak perlu setup)
 - `avatars/{uid}`: foto profil kecil.
 - `learning/{uid}`: progres belajar tiap anggota.
+- `signatures/{pertemuan}_{uid}`: tanda tangan kehadiran (PNG kecil).
 - Field baru: `deletedAt` di pertemuan (hapus lembut), `avatarVer` di anggota.
 
 ### 8c. Catatan konversi ke APK

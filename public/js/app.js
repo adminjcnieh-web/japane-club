@@ -16,6 +16,7 @@ import { reportsView } from './reports.js';
 import { profileView, settingsView, moreView } from './profile.js';
 import { avatar, initAvatars } from './avatar.js';
 import { initMusic } from './music.js';
+import { checkPendingSignatures } from './sign.js';
 import { learnHubView, learnCatView, learnLessonView } from './learn/view.js';
 import { clearProgress } from './learn/progress.js';
 
@@ -123,6 +124,7 @@ async function mountApp() {
   music?.destroy();
   music = initMusic();
   window.__jcMusic = music; // dipakai pengujian
+  setTimeout(() => { if (user && user.countsAttendance !== false) checkPendingSignatures(); }, 900); // tanda tangan yang tertunda
   const view = document.getElementById('view');
 
   const render = async () => {

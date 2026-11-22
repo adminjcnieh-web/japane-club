@@ -63,3 +63,9 @@
 @media (prefers-reduced-motion: reduce) { .mp-mini.playing .mp-art { animation: none; } }
 
 @media (min-width: 861px) { #toast-root { bottom: 76px; } }
+
+/* Kotak tanda tangan */
+.sig-box { position: relative; border: 2px dashed var(--line, #d9cfb8); border-radius: 14px; background: #fff; overflow: hidden; }
+.sig-box canvas { display: block; width: 100%; height: 220px; touch-action: none; cursor: crosshair; }
+.sig-hint { position: absolute; inset: 0; display: grid; place-items: center; color: #b9b3a3; font-size: 1rem; pointer-events: none; }
+.sig-hint[hidden] { display: none; }

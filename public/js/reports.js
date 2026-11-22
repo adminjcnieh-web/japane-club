@@ -3,6 +3,7 @@ import * as api from './api.js';
 import { icon } from './icons.js';
 import { esc, STATUS_KEYS, STATUS_LABEL, fmtDateShort, fmtDateTime, loadScript, downloadBlob, isApp, todayStr, pct } from './utils.js';
 import { LIBS } from './config.js';
+import { buildSignaturePdf } from './sigsheet.js';
 import { pageHead, emptyState, errorState, loadingBlock, statusBadge, toast, withBusy } from './ui.js';
 
 const lastDayOf = (ym) => {
@@ -349,8 +350,8 @@ export async function reportsView({ container, user, isStale }) {
     const modes = { month: 'Bulan & tahun', range: 'Rentang tanggal', meeting: 'Satu pertemuan' };
     container.innerHTML = pageHead({
       title: 'Laporan',
-      subtitle: 'Lihat rekap kehadiran dan unduh Excel.',
-      actions: `<button class="btn btn-primary" id="rp-export" disabled>${icon('fileDown')} Unduh Excel</button>`,
+      subtitle: 'Lihat rekap kehadiran, unduh Excel, dan daftar hadir bertanda tangan (PDF).',
+      actions: `<button class="btn btn-primary" id="rp-export" disabled>${icon('fileDown')} Unduh Excel</button> <button class="btn" id="rp-sigpdf">${icon('fileDown')} Daftar hadir (PDF)</button>`,
     }) + `
       <div class="panel"><div class="panel-body">
         <div class="segmented" role="group" aria-label="Cara memilih periode" style="margin-bottom:16px">
@@ -370,6 +371,23 @@ export async function reportsView({ container, user, isStale }) {
     container.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { f.mode = b.dataset.mode; frame(); load(); }));
     const bind = (sel, key) => $(sel)?.addEventListener('change', (e) => { f[key] = e.target.value; load(); });
     bind('#rp-month', 'month'); bind('#rp-year', 'year'); bind('#rp-meeting', 'meetingId'); bind('#rp-member', 'uid'); bind('#rp-from', 'from'); bind('#rp-to', 'to'); bind('#rp-kelas', 'kelas'); bind('#rp-status', 'status');
+    $('#rp-sigpdf').addEventListener('click', async (e) => {
+      try {
+        await withBusy(e.currentTarget, 'Menyiapkan', async () => {
+          let from, to;
+          if (f.mode === 'meeting') { const mt = meetings.find((x) => x.id === f.meetingId); from = to = mt?.date; }
+          else ({ from, to } = range());
+          if (!from || !to) throw new Error('Pilih periode dulu.');
+          const q = new URLSearchParams({ from, to });
+          if (f.kelas) q.set('kelas', f.kelas);
+          const sheet = await api.get(`/api/reports/signatures?${q}`);
+          const meta = metaNow();
+          const blob = await buildSignaturePdf(sheet, { periodLabel: `${f.mode === 'meeting' ? meta.periodLabel : `Periode: ${fmtDateShort(from)} s.d. ${fmtDateShort(to)}`}${f.kelas ? `, Kelas ${f.kelas}` : ''}`, createdLabel: meta.createdLabel, clubName: document.getElementById('club-name')?.textContent || 'Japanese Club' });
+          await downloadBlob(blob, `Daftar-Hadir-TTD_${from}_sd_${to}.pdf`);
+        });
+        toast(isApp() ? 'Daftar hadir siap. Pilih Simpan ke File atau kirim lewat menu yang muncul.' : 'File PDF daftar hadir berhasil dibuat.');
+      } catch (err) { toast(err.message || 'Gagal membuat PDF daftar hadir.', 'error'); }
+    });
     $('#rp-export').addEventListener('click', async (e) => {
       if (!data) return;
       try {

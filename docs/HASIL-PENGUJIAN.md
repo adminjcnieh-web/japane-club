@@ -57,6 +57,8 @@ Semua pengujian di bawah **benar-benar dijalankan** (bukan hanya membaca kode), 
 | Learning Center (7 kategori, level terkunci, server menolak melompati level, nyawa, hasil) | Teruji sebagian | API penuh. Di browser hanya 1 soal dijawab; **tiap jenis soal belum dijawab lengkap lewat UI** |
 | Beranda anggota baru | Teruji | browser + tangkapan layar desktop & HP |
 | Musik | Teruji sebagian | Browser: sinyal audio keluar (peak ~0,007 pada volume 8%), volume awal 8%, bisu, ganti lagu, jeda, sembunyikan, preferensi tersimpan. **Tidak pernah didengarkan manusia**: enak/tidaknya belum diketahui |
+| Tanda tangan wajib setelah scan (kotak tidak bisa ditutup, muncul lagi bila tertunda, satu kali, validasi PNG di server, hapus permanen ikut menghapus) | Teruji | API (7 tes) + browser (menggambar dengan mouse; HP asli belum) |
+| PDF daftar hadir bertanda tangan | Teruji sebagian | PDF dibuat di Chromium, dibuka dengan pembaca PDF (teks, nama, judul, gambar tanda tangan terdeteksi) dan dilihat sebagai gambar. **Belum diuji di APK/HP asli** (unduh lewat menu Bagikan) |
 | Excel 3 sheet | **Sebagian** | Struktur & angka diuji dengan shim ExcelJS. File .xlsx asli belum pernah dibuat/dibuka |
 
 ## Tambahan "Belum teruji"
@@ -65,6 +67,9 @@ Semua pengujian di bawah **benar-benar dijalankan** (bukan hanya membaca kode), 
 9. **Materi bahasa Jepang** (huruf, kosakata, tata bahasa, soal) dibuat otomatis dan disusun rapi, tetapi sebaiknya dicek guru/orang yang paham bahasa Jepang.
 10. **Unduh Excel di APK** (Filesystem + Share): di browser hanya diuji dengan plugin Capacitor palsu. Di APK asli belum diuji.
 11. **Penolakan absensi dari browser** memakai User-Agent, jadi bukan penghalang mutlak bagi orang teknis.
+
+12. **Menggambar tanda tangan dengan jari di HP asli**: di tes hanya dengan mouse. Sentuhan memakai pointer events yang sama, tapi belum dicoba di layar sentuh sungguhan.
+13. Nama anggota yang memakai huruf non-Latin (mis. kanji) tampil `?` di PDF karena memakai font PDF standar.
 
 ## Batasan yang disengaja
 - Pembatas request di kode bersifat per instance Worker, bukan global.

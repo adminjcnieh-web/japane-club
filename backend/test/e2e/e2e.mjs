@@ -343,11 +343,40 @@ await step('buka absensi -> layar QR tampil dengan QR, hitung mundur, dan daftar
   assert.match(await pOff.locator('.empty').innerText(), /Belum ada yang absen/);
   await shot(pOff, '05-qr-stage-desktop');
 });
+
+/** Menggambar tanda tangan di kotak tanda tangan lalu menyimpan. */
+async function signOn(page, { checkLocked = false } = {}) {
+  await page.waitForSelector('#sig-canvas', { timeout: 15000 });
+  if (checkLocked) {
+    await page.keyboard.press('Escape');
+    await page.mouse.click(5, 5); // klik di luar kotak
+    assert.equal(await page.locator('#sig-canvas').count(), 1, 'kotak tanda tangan tidak bisa ditutup tanpa menyimpan');
+    assert.equal(await page.locator('.modal [data-close]').count(), 0, 'tidak ada tombol tutup');
+    assert.equal(await page.locator('.modal-foot .btn-primary').isDisabled(), true, 'simpan nonaktif sebelum ada coretan');
+  }
+  if (checkLocked) { await page.waitForTimeout(700); await shot(page, '36-tanda-tangan-kosong'); }
+  const box = await page.locator('#sig-canvas').boundingBox();
+  await page.mouse.move(box.x + 30, box.y + box.height / 2);
+  await page.mouse.down();
+  for (let i = 0; i <= 40; i++) await page.mouse.move(box.x + 30 + i * (box.width - 60) / 40, box.y + box.height / 2 + Math.sin(i / 3) * 40);
+  await page.mouse.up();
+  await page.click('.modal-foot .btn-primary');
+  try { await page.waitForSelector('#sig-canvas', { state: 'detached', timeout: 12000 }); }
+  catch (e) {
+    console.log('        [diagnosa ttd] modal=' + (await page.locator('.modal').allInnerTexts()).join(' || ').replace(/\n+/g, ' | ').slice(0, 300) + ' jumlah=' + (await page.locator('.modal').count()));
+    throw e;
+  }
+}
+
 await step('anggota memindai QR dengan kamera -> Absensi berhasil (Hadir); tercatat atas UID akun login', async () => {
   const token = await pOff.evaluate(() => window.__qrTexts.at(-1));
   const s = await scanScenario(token, 'mem1');
+  await signOn(s.page, { checkLocked: true });
   await s.page.waitForSelector('.scan-result', { timeout: 15000 });
   assert.match(await s.page.locator('.scan-result').innerText(), /Absensi berhasil/);
+  const sigDoc = fake.getDoc(`signatures/${MID}_uidMem00001`);
+  assert.ok(sigDoc && /^iVBOR/.test(sigDoc.image), 'tanda tangan PNG tersimpan');
+  assert.equal(attendanceOf(MID, 'uidMem00001').signed, true);
   await shot(s.page, '06-scan-success-mobile');
   const rec = attendanceOf(MID, 'uidMem00001');
   assert.equal(rec.status, 'hadir');
@@ -401,6 +430,7 @@ await step('terlambat otomatis: pertemuan dengan jam mulai 60 menit lalu', async
   await callApi('POST', `/api/meetings/${lateId}/open`, tok);
   const q = (await makeToken(srv.env.QR_SECRET, lateId, Date.now())).token;
   const s = await scanScenario(q, 'mem3');
+  await signOn(s.page);
   await s.page.waitForSelector('.scan-result', { timeout: 15000 });
   assert.match(await s.page.locator('.scan-result').innerText(), /Tercatat terlambat/);
   assert.equal(attendanceOf(lateId, 'uidMem00003').status, 'terlambat');
@@ -821,6 +851,49 @@ await step('HP: dasbor anggota, Learning Center dan pemutar tidak overflow', asy
   await pm.goto(URL_ + '/#/learn');
   await pm.waitForTimeout(700);
   await shot(pm, '29-mobile-learn');
+  await pm.context().close();
+});
+
+
+await step('tanda tangan tertunda: tutup aplikasi sebelum tanda tangan -> kotak muncul lagi saat dibuka', async () => {
+  const tok = await apiLogin('off1');
+  const mk = await callApi('POST', '/api/meetings', tok, { name: 'Sesi Tanda Tangan', date: clubToday(), startTime: '00:05', endTime: '23:59', location: 'Aula', lateAfterMinutes: 180 });
+  assert.equal(mk.status, 200, JSON.stringify(mk.data));
+  const id = mk.data.meeting.id;
+  await callApi('POST', `/api/meetings/${id}/open`, tok);
+  const qr = await callApi('GET', `/api/meetings/${id}/qr`, tok);
+  const s = await scanScenario(qr.data.token, 'mem3');
+  await s.page.waitForSelector('#sig-canvas', { timeout: 15000 });
+  assert.equal(attendanceOf(id, 'uidMem00003').signed, false, 'belum tanda tangan');
+  await s.page.reload();
+  await s.page.waitForSelector('#sig-canvas', { timeout: 15000 }); // muncul lagi dari daftar tertunda
+  await signOn(s.page);
+  assert.ok(fake.getDoc(`signatures/${id}_uidMem00003`), 'tanda tangan tersimpan');
+  await s.page.reload();
+  await s.page.waitForSelector('.shell');
+  await s.page.waitForTimeout(1800);
+  assert.equal(await s.page.locator('#sig-canvas').count(), 0, 'tidak muncul lagi setelah tanda tangan');
+  await s.close();
+});
+
+await step('PDF daftar hadir bertanda tangan: anggota x pertemuan, ada gambar tanda tangan', async () => {
+  const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'pdf' });
+  await loginOk(pm, 'admin1');
+  await pm.goto(URL_ + '/#/reports');
+  await pm.waitForSelector('#rp-sigpdf');
+  const [dl] = await Promise.all([pm.waitForEvent('download', { timeout: 30000 }), pm.click('#rp-sigpdf')]);
+  const file = path.join(tmp, 'daftar-hadir.pdf');
+  await dl.saveAs(file);
+  assert.match(dl.suggestedFilename(), /^Daftar-Hadir-TTD_.*\.pdf$/);
+  const head = fs.readFileSync(file).subarray(0, 5).toString();
+  assert.equal(head, '%PDF-');
+  const txt = execFileSync('pdftotext', ['-layout', file, '-']).toString();
+  assert.match(txt, /Daftar Hadir Bertanda Tangan/);
+  assert.match(txt, /Ani Member/);
+  assert.match(txt, /Sesi Tanda Tangan/);
+  const imgs = execFileSync('pdfimages', ['-list', file]).toString().trim().split('\n').length - 2;
+  assert.ok(imgs >= 2, 'ada gambar tanda tangan di PDF (' + imgs + ')');
+  execFileSync('pdftoppm', ['-png', '-r', '70', '-f', '1', '-l', '1', file, path.join(SHOTS, '35-pdf-daftar-hadir')]);
   await pm.context().close();
 });
 

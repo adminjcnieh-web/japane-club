@@ -14,6 +14,7 @@ import * as reports from './routes/reports.js';
 import * as settings from './routes/settings.js';
 import * as avatars from './routes/avatars.js';
 import * as learning from './routes/learning.js';
+import * as signatures from './routes/signatures.js';
 
 // [method, pola, handler, publik?]
 const ROUTES = [
@@ -57,6 +58,9 @@ const ROUTES = [
   ['PUT', '/api/meetings/:id/attendance/:uid', attendance.setStatus],
 
   ['POST', '/api/attendance/scan', attendance.scan],
+  ['PUT', '/api/meetings/:id/signature', signatures.put],
+  ['GET', '/api/signatures/pending', signatures.pending],
+  ['GET', '/api/reports/signatures', signatures.sheet],
 
   ['GET', '/api/announcements', announcements.list],
   ['POST', '/api/announcements', announcements.create],

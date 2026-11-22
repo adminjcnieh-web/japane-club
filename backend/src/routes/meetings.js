@@ -278,7 +278,8 @@ export async function purge(ctx) {
     throw new HttpError(400, 'Nama pertemuan yang diketik tidak sama', 'confirm_mismatch');
   }
   const records = await attendanceOf(ctx, m.id);
-  await writeInChunks(ctx, records.map((r) => op.delete(`attendance/${r.id}`)));
+  const sigs = await ctx.fs.query('signatures', { where: [['meetingId', '==', m.id]] });
+  await writeInChunks(ctx, [...records.map((r) => op.delete(`attendance/${r.id}`)), ...sigs.map((x) => op.delete(`signatures/${x.id}`))]);
   await ctx.fs.commit([
     op.delete(`meetings/${m.id}`),
     auditOp({ action: 'meeting.purge', actor: ctx.auth, meetingId: m.id, meetingName: m.name, detail: `${m.date}; ${records.length} catatan dihapus permanen` }, ctx.now),

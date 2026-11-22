@@ -58,6 +58,8 @@ export function recordOut(r) {
     updatedAt: r.updatedAt,
     updatedByName: r.updatedByName || '',
     note: r.note || '',
+    signRequired: r.signRequired === true,
+    signed: !!r.signed,
   };
 }
 
