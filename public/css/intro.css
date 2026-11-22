@@ -1,0 +1,36 @@
+/* Animasi pembuka: matahari merah muncul, kanji 和 menyala, kelopak sakura jatuh, lalu tirai naik. */
+#intro { display: none; }
+.intro-on #intro {
+  display: grid; place-items: center; position: fixed; inset: 0; z-index: 200; overflow: hidden;
+  background: linear-gradient(180deg, #1e2a4c, #2a3566);
+  animation: intro-out .55s cubic-bezier(.7, 0, .3, 1) 1.75s forwards;
+}
+#intro .sun {
+  width: min(52vw, 260px); aspect-ratio: 1; border-radius: 50%; background: #c82d37;
+  display: grid; place-items: center; transform: scale(.2); opacity: 0;
+  animation: intro-sun .7s cubic-bezier(.2, .9, .3, 1.2) .1s forwards;
+  box-shadow: 0 0 80px rgba(200, 45, 55, .45);
+}
+#intro .kanji {
+  font: 700 min(26vw, 130px)/1 'Noto Serif JP', 'Noto Serif CJK JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  color: #fcf6ea; opacity: 0; transform: translateY(8px);
+  animation: intro-kanji .6s ease-out .6s forwards;
+}
+#intro .name {
+  position: absolute; left: 0; right: 0; bottom: 18vh; text-align: center; color: #fcf6ea;
+  font: 600 1.15rem/1.2 Georgia, 'Times New Roman', serif; letter-spacing: .08em; opacity: 0;
+  animation: intro-kanji .6s ease-out .95s forwards;
+}
+#intro .petal {
+  position: absolute; top: -8vh; width: 14px; height: 10px; border-radius: 70% 30% 70% 30%;
+  background: #f4b8c4; opacity: 0; animation: intro-fall 2.2s linear forwards;
+}
+@keyframes intro-sun { to { transform: scale(1); opacity: 1; } }
+@keyframes intro-kanji { to { opacity: 1; transform: none; } }
+@keyframes intro-fall {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  15% { opacity: .95; }
+  100% { opacity: .9; transform: translate(var(--dx, 30px), 110vh) rotate(420deg); }
+}
+@keyframes intro-out { to { transform: translateY(-100%); visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .intro-on #intro { display: none; } }
