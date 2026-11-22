@@ -1,0 +1,90 @@
+name: Build APK
+
+# Jalankan manual: tab Actions -> "Build APK" -> Run workflow -> isi alamat website.
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "Alamat website (contoh: https://japanese-club.namamu.workers.dev)"
+        required: true
+        type: string
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ inputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Periksa alamat website
+        run: |
+          case "$APP_URL" in
+            https://*) echo "Alamat: $APP_URL" ;;
+            *) echo "Alamat harus diawali https://"; exit 1 ;;
+          esac
+
+      - name: Siapkan folder apk
+        run: |
+          mkdir -p apk/www
+          cat > apk/package.json <<'JSON'
+          {
+            "name": "japanese-club-apk",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "@capacitor/android": "6.2.0",
+              "@capacitor/cli": "6.2.0",
+              "@capacitor/core": "6.2.0"
+            }
+          }
+          JSON
+          cat > apk/www/index.html <<'HTML'
+          <!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Japanese Club</title></head><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>Japanese Club</h2><p>Tidak bisa membuka website. Periksa internet lalu buka aplikasi lagi.</p></body></html>
+          HTML
+
+      - name: Pasang Capacitor
+        working-directory: apk
+        run: npm install
+
+      - name: Tulis konfigurasi aplikasi
+        working-directory: apk
+        run: |
+          node -e '
+            const host = new URL(process.env.APP_URL).host;
+            require("fs").writeFileSync("capacitor.config.json", JSON.stringify({
+              appId: "id.japaneseclub.app",
+              appName: "Japanese Club",
+              webDir: "www",
+              server: { url: process.env.APP_URL, cleartext: false, allowNavigation: [host] },
+              android: { allowMixedContent: false }
+            }, null, 2));
+          '
+
+      - name: Buat proyek Android
+        working-directory: apk
+        run: |
+          npx cap add android
+          # Izin kamera untuk scan QR
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />\n    <application#' "$MANIFEST"
+          grep -n "CAMERA" "$MANIFEST"
+          npx cap sync android
+
+      - name: Bangun APK
+        working-directory: apk/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: japanese-club-apk
+          path: apk/android/app/build/outputs/apk/debug/app-debug.apk
