@@ -46,6 +46,8 @@ jobs:
               "@capacitor/android": "6.2.0",
               "@capacitor/cli": "6.2.0",
               "@capacitor/core": "6.2.0",
+              "@capacitor/filesystem": "6.0.1",
+              "@capacitor/share": "6.0.2",
               "@capacitor/splash-screen": "6.0.2"
             }
           }
@@ -674,7 +676,7 @@ jobs:
               appName: "Japanese Club",
               webDir: "www",
               server: { url: process.env.APP_URL, cleartext: false, allowNavigation: [host] },
-              android: { allowMixedContent: false, webContentsDebuggingEnabled: false },
+              android: { allowMixedContent: false, webContentsDebuggingEnabled: false, appendUserAgent: "JapaneseClubApp/1.0" },
               plugins: { SplashScreen: { launchShowDuration: 1500, launchAutoHide: true, launchFadeOutDuration: 450, backgroundColor: "#fcf6ea", androidScaleType: "CENTER_CROP", showSpinner: false } }
             }, null, 2));
           '
