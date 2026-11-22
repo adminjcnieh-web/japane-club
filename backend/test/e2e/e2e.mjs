@@ -623,11 +623,10 @@ await step('HP: modal tampil sebagai lembar bawah, tidak melebihi layar', async 
 // ================= FITUR BARU: dasbor, foto profil, Learning Center, musik =================
 console.log('\n== Fitur baru ==');
 const png = path.join(tmp, 'foto.png');
-execFileSync('python3', ['-I', '-c', `from PIL import Image, ImageDraw
-im = Image.new('RGB', (900, 600), (200, 40, 50))
-d = ImageDraw.Draw(im)
-d.ellipse((300, 100, 600, 400), fill=(250, 220, 200))
-im.save(${JSON.stringify(png)})`]);
+execFileSync('python3', ['-I', '-c', `import cv2, numpy as np
+im = np.zeros((600, 900, 3), np.uint8); im[:] = (50, 40, 200)
+cv2.circle(im, (450, 250), 150, (200, 220, 250), -1)
+cv2.imwrite(${JSON.stringify(png)}, im)`]);
 
 await step('dasbor anggota: sapaan, progres belajar, kosakata hari ini, tombol lanjut belajar', async () => {
   const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'dash-m' });
@@ -685,10 +684,11 @@ await step('foto profil: berkas bukan gambar ditolak dengan pesan', async () => 
 
 await step('admin menghapus foto anggota dari halaman detail', async () => {
   const tokM = await apiLogin('mem3');
-  const jpeg = execFileSync('python3', ['-I', '-c', `from PIL import Image
-import io, base64
-b = io.BytesIO(); Image.new('RGB',(256,256),(10,120,60)).save(b,'JPEG'); t = io.BytesIO(); Image.new('RGB',(64,64),(10,120,60)).save(t,'JPEG')
-print(base64.b64encode(b.getvalue()).decode()); print(base64.b64encode(t.getvalue()).decode())`]).toString().trim().split('\n');
+  const jpeg = execFileSync('python3', ['-I', '-c', `import cv2, numpy as np, base64
+def enc(n):
+    im = np.zeros((n, n, 3), np.uint8); im[:] = (60, 120, 10)
+    return base64.b64encode(cv2.imencode('.jpg', im)[1].tobytes()).decode()
+print(enc(256)); print(enc(64))`]).toString().trim().split('\n');
   const up = await callApi('PUT', '/api/me/avatar', tokM, { image: jpeg[0], thumb: jpeg[1] });
   assert.equal(up.status, 200, JSON.stringify(up.data));
   const pm = await newPage(browserNormal, { width: 1280, height: 900, label: 'foto-admin' });
