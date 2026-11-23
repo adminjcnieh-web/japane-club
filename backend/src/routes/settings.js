@@ -10,6 +10,7 @@ const DEFAULTS = {
   contact: '',
   defaultLateMinutes: 15,
   learningHearts: 5,
+  absenceAlertStreak: 3,
 };
 
 export async function readSettings(ctx) {
@@ -20,6 +21,7 @@ export async function readSettings(ctx) {
     contact: doc?.contact ?? DEFAULTS.contact,
     defaultLateMinutes: Number.isInteger(doc?.defaultLateMinutes) ? doc.defaultLateMinutes : DEFAULTS.defaultLateMinutes,
     learningHearts: Number.isInteger(doc?.learningHearts) ? doc.learningHearts : DEFAULTS.learningHearts,
+    absenceAlertStreak: Number.isInteger(doc?.absenceAlertStreak) ? doc.absenceAlertStreak : DEFAULTS.absenceAlertStreak,
   };
 }
 
@@ -36,6 +38,7 @@ export async function put(ctx) {
     contact: v.str(b.contact, { name: 'Kontak', max: 100 }),
     defaultLateMinutes: v.intRange(b.defaultLateMinutes, { name: 'Batas terlambat (menit)', min: 0, max: 180 }),
     learningHearts: b.learningHearts === undefined ? (await readSettings(ctx)).learningHearts : v.intRange(b.learningHearts, { name: 'Jumlah nyawa belajar', min: 1, max: 10 }),
+    absenceAlertStreak: b.absenceAlertStreak === undefined ? (await readSettings(ctx)).absenceAlertStreak : v.intRange(b.absenceAlertStreak, { name: 'Batas tidak hadir beruntun', min: 2, max: 10 }),
     updatedAt: ctx.now,
     updatedBy: ctx.auth.uid,
   };

@@ -3,7 +3,7 @@ import * as api from './api.js';
 import { icon } from './icons.js';
 import { esc, todayStr, STATUS_KEYS, STATUS_LABEL, STATUS_COLOR, fmtDate, fmtDateShort, fmtTime, fmtMonthShort, timeAgo, pct, loadScript, dayNum } from './utils.js';
 import { LIBS } from './config.js';
-import { pageHead, skeletonPage, errorState, emptyState, statusBadge, meetingBadge } from './ui.js';
+import { openModal, pageHead, skeletonPage, errorState, emptyState, statusBadge, meetingBadge } from './ui.js';
 import { openAnnouncement } from './announcements.js';
 import { avatar } from './avatar.js';
 import { loadProgress, overall, catProgress, lastLesson, recommended } from './learn/progress.js';
@@ -194,15 +194,36 @@ function memberHtml(d, user, lp) {
     </div>`;
 }
 
+
+function alertCard(a) {
+  if (!a || !a.items.length) return '';
+  return `<div class="panel alert-absence" style="margin-top:18px;border-left:4px solid var(--danger,#c0392b)"><div class="panel-head"><h2>Perlu perhatian: ${a.items.length} anggota tidak hadir ${a.threshold}+ pertemuan beruntun</h2></div>
+    <div class="panel-body"><ul style="list-style:none;margin:0;padding:0;display:grid;gap:8px">${a.items.map((i) => `<li><a href="#/members/${esc(i.uid)}"><strong>${esc(i.fullName)}</strong></a>${i.kelas ? ` <span class="small muted">(${esc(i.kelas)})</span>` : ''} - ${i.streak} pertemuan beruntun <span class="small muted">(terakhir: ${esc(i.lastMeetings[0]?.name || '')})</span></li>`).join('')}</ul></div></div>`;
+}
+
+function dailyAlert(a) {
+  if (!a || !a.items.length) return;
+  const key = 'jc_absence_alert_day';
+  const day = todayStr();
+  try { if (localStorage.getItem(key) === day) return; } catch { /* abaikan */ }
+  try { localStorage.setItem(key, day); } catch { /* abaikan */ }
+  openModal({
+    title: 'Anggota tidak hadir beruntun',
+    html: `<p>Anggota berikut sudah tidak hadir ${a.threshold} pertemuan beruntun atau lebih:</p><ul>${a.items.map((i) => `<li><strong>${esc(i.fullName)}</strong> - ${i.streak} pertemuan</li>`).join('')}</ul>`,
+    footer: [{ label: 'Mengerti', kind: 'primary' }],
+  });
+}
+
 export async function dashboardView({ container, user, isStaff, isStale }) {
   container.innerHTML = pageHead({ title: 'Beranda' }) + skeletonPage();
   let cleanup = null;
 
   const load = async (silent = false) => {
     try {
-      const [d, lp] = await Promise.all([api.get('/api/dashboard'), isStaff ? null : loadProgress(true).catch(() => null)]);
+      const [d, lp, ab] = await Promise.all([api.get('/api/dashboard'), isStaff ? null : loadProgress(true).catch(() => null), user.role === 'admin' ? api.get('/api/alerts/absence').catch(() => null) : null]);
       if (isStale()) return;
-      container.innerHTML = pageHead({ title: 'Beranda', actions: `<button class="btn btn-sm" id="dash-refresh">${icon('refresh')} Muat ulang</button>` }) + (d.role === 'staff' ? staffHtml(d, isStaff, user) : memberHtml(d, user, lp));
+      container.innerHTML = pageHead({ title: 'Beranda', actions: `<button class="btn btn-sm" id="dash-refresh">${icon('refresh')} Muat ulang</button>` }) + (d.role === 'staff' ? alertCard(ab) + staffHtml(d, isStaff, user) : memberHtml(d, user, lp));
+      if (!silent) dailyAlert(ab);
       bindAnnouncements(container, d.announcements);
       container.querySelector('#dash-refresh')?.addEventListener('click', () => load());
       if (d.role === 'staff') {

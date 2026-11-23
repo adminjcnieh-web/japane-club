@@ -977,6 +977,108 @@ await step('Excel di aplikasi: file disimpan lewat Filesystem lalu menu Bagikan 
   await pm.context().close();
 });
 
+console.log('\n== Peringatan tidak hadir beruntun ==');
+await step('admin melihat kartu + notifikasi harian untuk anggota alfa 3x beruntun', async () => {
+  for (let n = 1; n <= 3; n++) {
+    fake.putDoc(`meetings/alr${n}`, { name: `Alert ${n}`, date: `2099-01-0${n}`, startTime: '10:00', endTime: '11:00', status: 'closed', createdAt: new Date() });
+    fake.putDoc(`attendance/alr${n}_uidMem00002`, { meetingId: `alr${n}`, meetingName: `Alert ${n}`, meetingDate: `2099-01-0${n}`, uid: 'uidMem00002', status: 'alfa', method: 'auto' });
+    fake.putDoc(`attendance/alr${n}_uidMem00001`, { meetingId: `alr${n}`, meetingName: `Alert ${n}`, meetingDate: `2099-01-0${n}`, uid: 'uidMem00001', status: n === 2 ? 'terlambat' : 'alfa', method: 'auto' });
+  }
+  const pa = await newPage(browserNormal, { label: 'alert-admin' });
+  await loginOk(pa, 'admin1');
+  await pa.waitForSelector('.alert-absence');
+  const card = await pa.locator('.alert-absence').innerText();
+  assert.match(card, /Budi Member/);
+  assert.doesNotMatch(card, /Ani Member/);
+  await pa.waitForSelector('.modal');
+  assert.match(await pa.locator('.modal').innerText(), /Budi Member/);
+  await shot(pa, '16-peringatan-alfa');
+  await pa.click('.modal-foot button');
+  await pa.waitForSelector('.modal', { state: 'detached' });
+  await pa.reload();
+  await pa.waitForSelector('.alert-absence');
+  assert.equal(await pa.locator('.modal').count(), 0, 'modal harian tidak muncul dua kali');
+  await pa.context().close();
+});
+
+console.log('\n== Dapur Jepang ==');
+await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan gerakan jari sampai selesai', async () => {
+  const pg = await newPage(browserNormal, { width: 390, height: 844, mobile: true, label: 'cook' });
+  await loginOk(pg, 'mem1');
+  await pg.goto(URL_ + '/#/learn');
+  await pg.waitForSelector('.cook-banner');
+  await pg.click('.cook-banner');
+  await pg.waitForSelector('.cook-intro');
+  await pg.waitForTimeout(900);
+  await shot(pg, '17-dapur-intro');
+  await pg.waitForSelector('.cook-intro', { state: 'detached', timeout: 6000 });
+  await pg.waitForSelector('.cook-card');
+  await shot(pg, '18-dapur-menu');
+  const box = async (sel) => { const b = await pg.locator(sel).first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
+  const svgPt = async (x, y) => { const b = await pg.locator('.ck-svg').boundingBox(); return { x: b.x + (x / 360) * b.width, y: b.y + (y / 380) * b.height }; };
+  const waitStage = (n) => pg.waitForFunction((n) => document.querySelector('.cook-head .small')?.textContent.includes('Langkah ' + n), n, { timeout: 8000 });
+  const hold = async (to) => {
+    const c = await box('.ck-svg');
+    await pg.mouse.move(c.x, c.y); await pg.mouse.down();
+    await pg.waitForFunction((to) => parseFloat(document.querySelector('.ck-svg').dataset.level) >= to, to, { timeout: 5000 });
+    await pg.mouse.up();
+  };
+  const drag = async (name) => {
+    const it = await box('.drag-item'), tg = await box('.drag-target');
+    await pg.mouse.move(it.x, it.y); await pg.mouse.down();
+    await pg.mouse.move((it.x + tg.x) / 2, (it.y + tg.y) / 2, { steps: 5 });
+    await pg.mouse.move(tg.x, tg.y, { steps: 5 }); await shot(pg, name); await pg.mouse.up();
+  };
+  const taps = async (n) => { const c = await box('.ck-svg'); for (let i = 0; i < n; i++) await pg.mouse.click(c.x, c.y); };
+  const finishCheck = async (re) => {
+    await pg.waitForSelector('.cook-done', { timeout: 8000 });
+    assert.match(await pg.locator('h1').innerText(), re);
+    assert.equal(await pg.locator('.cook-star').count(), 3);
+    assert.ok(await pg.locator('.cook-star.on').count() >= 1);
+    assert.ok((await pg.locator('.cook-vocab li').count()) >= 3);
+    await noOverflow(pg);
+  };
+
+  // ---- onigiri ----
+  await pg.click('a[href="#/cook/onigiri"]');
+  await pg.waitForSelector('#start'); await shot(pg, '19-dapur-resep');
+  await pg.click('#start');
+  await pg.waitForSelector('.ck-svg[data-type="hold"]');
+  await hold(0.72); await shot(pg, '20-dapur-nasi');
+  await waitStage(2); await taps(8); await shot(pg, '21-dapur-nigiri');
+  await waitStage(3); await drag('22-dapur-umeboshi');
+  await waitStage(4); await drag('23-dapur-nori');
+  await finishCheck(/おにぎり/); await pg.waitForTimeout(1500); await shot(pg, '24-dapur-selesai');
+
+  // ---- ocha ----
+  await pg.goto(URL_ + '/#/cook/ocha'); await pg.click('#start');
+  await pg.waitForSelector('.drag-item'); await drag('25-dapur-teh');
+  await waitStage(2); await hold(0.7);
+  await waitStage(3); await pg.waitForFunction(() => parseFloat(document.querySelector('.ck-svg').dataset.p) >= 0.68, null, { timeout: 8000 });
+  await shot(pg, '26-dapur-seduh'); await pg.mouse.click(200, 400);
+  await waitStage(4); await hold(0.78); await shot(pg, '27-dapur-cangkir');
+  await finishCheck(/おちゃ/);
+
+  // ---- sushi ----
+  await pg.goto(URL_ + '/#/cook/sushi'); await pg.click('#start');
+  await pg.waitForSelector('.ck-svg[data-type="tap"]'); await taps(6);
+  await waitStage(2); await pg.waitForSelector('.cut-line', { state: 'attached' });
+  const a = await svgPt(30, 200), z = await svgPt(330, 200);
+  await pg.mouse.move(a.x, a.y); await pg.mouse.down(); await pg.mouse.move((a.x + z.x) / 2, a.y, { steps: 12 }); await shot(pg, '28-dapur-potong'); await pg.mouse.move(z.x, z.y, { steps: 12 }); await pg.mouse.up();
+  await waitStage(3); await drag('29-dapur-wasabi');
+  await waitStage(4); await drag('30-dapur-ikan');
+  await finishCheck(/すし/); await shot(pg, '31-dapur-sushi-jadi');
+
+  // lepas di tempat salah: item kembali, tahap tidak selesai
+  await pg.goto(URL_ + '/#/cook/onigiri'); await pg.click('#start');
+  await pg.waitForSelector('.ck-svg[data-type="hold"]'); await hold(0.72); await waitStage(2); await taps(8); await waitStage(3);
+  const it = await box('.drag-item');
+  await pg.mouse.move(it.x, it.y); await pg.mouse.down(); await pg.mouse.move(it.x + 5, it.y - 5, { steps: 3 }); await pg.mouse.up();
+  await pg.waitForTimeout(500);
+  assert.equal(await pg.locator('.cook-flash.show').count(), 0, 'lepas di tempat salah tidak menyelesaikan tahap');
+  await pg.context().close();
+});
+
 await pRep.context().close();
 
 // keluaran

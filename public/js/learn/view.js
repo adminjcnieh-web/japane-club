@@ -4,6 +4,7 @@ import { icon } from '../icons.js';
 import { esc } from '../utils.js';
 import { pageHead, errorState, toast, confirmDialog, skeletonPage, emptyState } from '../ui.js';
 import { CATEGORIES, CAT_BY_ID } from './data.js';
+import { resetCookIntro } from './cook.js';
 import { buildQuestions, shuffle } from './engine.js';
 import { loadProgress, setProgress, isPassed, isUnlocked, bestScore, catProgress, overall, recommended } from './progress.js';
 
@@ -22,6 +23,7 @@ const heartsHtml = (n, max) => Array.from({ length: max }, (_, i) => `<span clas
 
 // ---------- Beranda belajar ----------
 export async function learnHubView({ container, isStale }) {
+  resetCookIntro();
   container.innerHTML = pageHead({ title: 'Belajar' }) + skeletonPage();
   const load = async () => {
     try {
@@ -40,7 +42,8 @@ export async function learnHubView({ container, isStale }) {
         <div class="cat-grid">${CATEGORIES.map((c, i) => {
           const cp = catProgress(p, c.id);
           return `<a class="cat-card" href="#/learn/${c.id}" style="--i:${i}"><span class="cat-jp" aria-hidden="true">${esc(c.jp)}</span><h3>${esc(c.name)}</h3><p>${esc(c.blurb)}</p><div class="meter"><i style="width:${cp.percent}%"></i></div><span class="small muted">${cp.done} dari ${cp.total} level</span></a>`;
-        }).join('')}</div>`;
+        }).join('')}</div>
+        <a class="cook-banner" href="#/cook"><span aria-hidden="true">料理</span><div><strong>Dapur Jepang</strong><div class="small">Game memasak: buat onigiri, ocha, dan sushi dengan gerakan jari.</div></div></a>`;
     } catch (e) {
       if (isStale()) return;
       container.innerHTML = pageHead({ title: 'Belajar' }) + errorState(e.message);

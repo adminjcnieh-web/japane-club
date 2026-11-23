@@ -15,6 +15,7 @@ import * as settings from './routes/settings.js';
 import * as avatars from './routes/avatars.js';
 import * as learning from './routes/learning.js';
 import * as signatures from './routes/signatures.js';
+import * as alerts from './routes/alerts.js';
 
 // [method, pola, handler, publik?]
 const ROUTES = [
@@ -34,6 +35,7 @@ const ROUTES = [
   ['POST', '/api/learning/result', learning.record],
 
   ['GET', '/api/dashboard', dashboard.get],
+  ['GET', '/api/alerts/absence', alerts.absence],
 
   ['GET', '/api/members', members.list],
   ['POST', '/api/members', members.create],

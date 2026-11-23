@@ -914,3 +914,52 @@ describe('Learning Center', () => {
     assert.equal((await api('PUT', '/api/settings', { token: mem, body: { ...cur, learningHearts: 9 } })).status, 403);
   });
 });
+
+describe('Peringatan tidak hadir beruntun', () => {
+  const seed = (n, perUid) => {
+    const id = `am${n}`;
+    fake.putDoc(`meetings/${id}`, { name: `Pertemuan ${n}`, date: `2026-10-0${n}`, startTime: '10:00', endTime: '11:00', status: 'closed', createdAt: new Date() });
+    for (const [uid, status] of Object.entries(perUid)) fake.putDoc(`attendance/${id}_${uid}`, { meetingId: id, meetingName: `Pertemuan ${n}`, meetingDate: `2026-10-0${n}`, uid, status, method: 'auto' });
+  };
+
+  test('hanya anggota dengan alfa >= batas yang muncul; alfa+izin+sakit dihitung, hadir/terlambat memutus; hanya admin', async () => {
+    const admin = await login('admin1');
+    // m1..m5. Ani: alfa m3-m5 (3). Budi: alfa m4-m5 (2). Cici: alfa semua (5). Dodi nonaktif: alfa semua.
+    seed(1, { uidMem00001: 'hadir', uidMem00002: 'hadir', uidMem00003: 'alfa', uidOld00001: 'alfa' });
+    seed(2, { uidMem00001: 'hadir', uidMem00002: 'alfa', uidMem00003: 'alfa', uidOld00001: 'alfa' });
+    seed(3, { uidMem00001: 'sakit', uidMem00002: 'terlambat', uidMem00003: 'alfa', uidOld00001: 'alfa' });
+    seed(4, { uidMem00001: 'alfa', uidMem00002: 'alfa', uidMem00003: 'alfa', uidOld00001: 'alfa' });
+    seed(5, { uidMem00001: 'alfa', uidMem00002: 'alfa', uidMem00003: 'alfa', uidOld00001: 'alfa' });
+
+    const r = await api('GET', '/api/alerts/absence', { token: admin });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.threshold, 3);
+    assert.deepEqual(r.data.items.map((i) => [i.uid, i.streak]), [['uidMem00003', 5], ['uidMem00001', 3]]);
+    assert.equal(r.data.items[1].lastMeetings[0].name, 'Pertemuan 5');
+
+    // batas 2 -> Budi ikut
+    const cur = (await api('GET', '/api/settings', { token: admin })).data.settings;
+    assert.equal((await api('PUT', '/api/settings', { token: admin, body: { ...cur, absenceAlertStreak: 1 } })).status, 400);
+    assert.equal((await api('PUT', '/api/settings', { token: admin, body: { ...cur, absenceAlertStreak: 2 } })).status, 200);
+    const r2 = await api('GET', '/api/alerts/absence', { token: admin });
+    assert.equal(r2.data.items.length, 3);
+
+    // pertemuan terhapus (arsip) tidak dihitung
+    fake.putDoc('meetings/am5', { name: 'Pertemuan 5', date: '2026-10-05', startTime: '10:00', endTime: '11:00', status: 'closed', deletedAt: new Date() });
+    const r3 = await api('GET', '/api/alerts/absence', { token: admin });
+    // tanpa m5: Ani sakit m3 + alfa m4 (2), Cici alfa semua, Budi hanya m4 (m3 terlambat memutus)
+    assert.deepEqual(r3.data.items.map((i) => i.uid).sort(), ['uidMem00001', 'uidMem00003']);
+
+    assert.equal((await api('GET', '/api/alerts/absence', { token: await login('off1') })).status, 403);
+    assert.equal((await api('GET', '/api/alerts/absence', { token: await login('mem1') })).status, 403);
+    assert.equal((await api('GET', '/api/alerts/absence')).status, 401);
+  });
+
+  test('pertemuan kurang dari batas -> kosong', async () => {
+    const admin = await login('admin1');
+    seed(1, { uidMem00001: 'alfa' });
+    const r = await api('GET', '/api/alerts/absence', { token: admin });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.data.items, []);
+  });
+});

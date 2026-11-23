@@ -18,6 +18,7 @@ import { avatar, initAvatars } from './avatar.js';
 import { initMusic } from './music.js';
 import { checkPendingSignatures } from './sign.js';
 import { learnHubView, learnCatView, learnLessonView } from './learn/view.js';
+import { cookMenuView, cookPlayView } from './learn/cook.js';
 import { clearProgress } from './learn/progress.js';
 
 const root = document.getElementById('app');
@@ -189,6 +190,8 @@ route('/', (c) => dashboardView(c));
 route('/learn', (c) => learnHubView(c));
 route('/learn/:cat', (c) => learnCatView(c));
 route('/learn/:cat/:n', (c) => learnLessonView(c));
+route('/cook', (c) => cookMenuView(c));
+route('/cook/:id', (c) => cookPlayView(c));
 route('/scan', (c) => scannerView(c), { roles: ['member', 'officer', 'admin'] });
 route('/schedule', (c) => scheduleView(c));
 route('/announcements', (c) => announcementsView(c));

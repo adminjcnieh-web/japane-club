@@ -70,6 +70,7 @@ export async function settingsView({ container, isStale }) {
         <div class="field"><label for="st-contact">Kontak pembina atau pengurus</label><input class="input" id="st-contact" name="contact" maxlength="100" value="${esc(s.contact)}" /></div>
         <div class="field"><label for="st-late">Batas terlambat bawaan (menit)</label><input class="input" id="st-late" name="defaultLateMinutes" type="number" min="0" max="180" inputmode="numeric" required value="${esc(s.defaultLateMinutes)}" /><span class="hint">Dipakai bila pertemuan baru tidak mengatur batas sendiri.</span></div>
         <div class="field"><label for="st-hearts">Jumlah nyawa di Learning Center</label><input class="input" id="st-hearts" name="learningHearts" type="number" min="1" max="10" inputmode="numeric" required value="${esc(s.learningHearts)}" /><span class="hint">Berapa kali boleh salah dalam satu level (1 sampai 10).</span></div>
+        <div class="field"><label for="st-absence">Peringatan tidak hadir beruntun</label><input class="input" id="st-absence" name="absenceAlertStreak" type="number" min="2" max="10" inputmode="numeric" required value="${esc(s.absenceAlertStreak)}" /><span class="hint">Admin diberi tahu jika anggota alfa sebanyak ini berturut-turut (2 sampai 10).</span></div>
         <div id="st-err"></div>
         <button class="btn btn-primary" type="submit" id="st-save">Simpan pengaturan</button>
       </form></div></div>`;
@@ -81,7 +82,7 @@ export async function settingsView({ container, isStale }) {
       btn.disabled = true;
       container.querySelector('#st-err').innerHTML = '';
       try {
-        const r = await api.put('/api/settings', { clubName: form.clubName.value.trim(), description: form.description.value.trim(), contact: form.contact.value.trim(), defaultLateMinutes: Number(form.defaultLateMinutes.value), learningHearts: Number(form.learningHearts.value) });
+        const r = await api.put('/api/settings', { clubName: form.clubName.value.trim(), description: form.description.value.trim(), contact: form.contact.value.trim(), defaultLateMinutes: Number(form.defaultLateMinutes.value), learningHearts: Number(form.learningHearts.value), absenceAlertStreak: Number(form.absenceAlertStreak.value) });
         for (const id of ['club-name', 'club-name-m']) { const el = document.getElementById(id); if (el) el.textContent = r.settings.clubName; }
         toast('Pengaturan disimpan.');
       } catch (err) {

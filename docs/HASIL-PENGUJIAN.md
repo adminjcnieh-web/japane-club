@@ -69,8 +69,12 @@ Semua pengujian di bawah **benar-benar dijalankan** (bukan hanya membaca kode), 
 11. **Penolakan absensi dari browser** memakai User-Agent, jadi bukan penghalang mutlak bagi orang teknis.
 
 12. **Menggambar tanda tangan dengan jari di HP asli**: di tes hanya dengan mouse. Sentuhan memakai pointer events yang sama, tapi belum dicoba di layar sentuh sungguhan.
+14. **Peringatan alfa beruntun** hanya tampil saat admin membuka aplikasi (dihitung langsung). Notifikasi HP otomatis jam sore belum ada (butuh Firebase Cloud Messaging atau bot Telegram + cron).
 13. Nama anggota yang memakai huruf non-Latin (mis. kanji) tampil `?` di PDF karena memakai font PDF standar.
 
 ## Batasan yang disengaja
 - Pembatas request di kode bersifat per instance Worker, bukan global.
 - Dasbor tidak refresh otomatis (hemat kuota gratis Firestore).
+
+## Peringatan tidak hadir beruntun
+Tes API (2): urutan, batas, terlambat memutus, izin/sakit dihitung, pertemuan arsip diabaikan, hanya admin, validasi batas 2-10. Tes e2e (1): kartu + kotak harian muncul sekali. Game Dapur Jepang: 1 tes e2e memainkan ketiga hidangan dengan mouse (tahan, ketuk, seret, geser), cek bintang/kosakata, dan seret salah tempat. Total: 56 tes API, 59/59 e2e. Gerakan dengan jari di HP asli dan animasi tirai pembuka belum dilihat utuh di perangkat nyata.
