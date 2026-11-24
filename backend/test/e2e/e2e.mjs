@@ -1016,7 +1016,7 @@ await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan geraka
   await shot(pg, '18-dapur-menu');
   const box = async (sel) => { const b = await pg.locator(sel).first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
   const svgPt = async (x, y) => { const b = await pg.locator('.ck-svg').boundingBox(); return { x: b.x + (x / 360) * b.width, y: b.y + (y / 380) * b.height }; };
-  const waitStage = (n) => pg.waitForFunction((n) => document.querySelector('.cook-head .small')?.textContent.includes('Langkah ' + n), n, { timeout: 8000 });
+  const waitStage = (n) => pg.waitForFunction((n) => document.querySelector('.cook-head .small')?.textContent.includes('Langkah ' + n), n, { timeout: 12000 });
   const hold = async (to) => {
     const c = await box('.ck-svg');
     await pg.mouse.move(c.x, c.y); await pg.mouse.down();
@@ -1039,39 +1039,93 @@ await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan geraka
     await noOverflow(pg);
   };
 
-  // ---- onigiri ----
+  const circle = async (turns) => {
+    const c = await svgPt(180 + 76, 196); await pg.mouse.move(c.x, c.y); await pg.mouse.down();
+    for (let i = 1; i <= turns * 60 + 60; i++) {
+      const t = (i / 36) * 2 * Math.PI; const q = await svgPt(180 + Math.cos(t) * 76, 196 + Math.sin(t) * 76);
+      await pg.mouse.move(q.x, q.y);
+      if (parseFloat(await pg.locator('.ck-svg').getAttribute('data-turns')) >= turns + 0.15) break;
+    }
+    await pg.mouse.up();
+  };
+  const timing = async (p) => { await pg.waitForFunction((p) => parseFloat(document.querySelector('.ck-svg').dataset.p) >= p, p, { timeout: 9000 }); await pg.mouse.click(200, 400); };
+  const cutAll = async () => {
+    await pg.waitForSelector('.cut-line', { state: 'attached' });
+    const a = await svgPt(30, 200), z = await svgPt(330, 200);
+    await pg.mouse.move(a.x, a.y); await pg.mouse.down(); await pg.mouse.move((a.x + z.x) / 2, a.y, { steps: 12 }); await shot(pg, '28-dapur-potong'); await pg.mouse.move(z.x, z.y, { steps: 12 }); await pg.mouse.up();
+  };
+  const play = async (plan, shots = {}) => {
+    await pg.click('#start');
+    for (let i = 0; i < plan.length; i++) {
+      await waitStage(i + 1).catch(async (e) => { await shot(pg, `gagal-stage-${i + 1}`); const info = await pg.evaluate(() => ({ turns: document.querySelector('.ck-svg')?.dataset.turns, type: document.querySelector('.ck-svg')?.dataset.type, head: document.querySelector('.cook-head')?.innerText, hash: location.hash })); throw new Error(`stage ${i + 1} tidak muncul setelah ${JSON.stringify(plan[i - 1])} ${JSON.stringify(info)}: ` + e.message); });
+      const [kind, arg] = plan[i];
+      await pg.waitForSelector(`.ck-svg[data-type="${kind}"]`);
+      await pg.waitForTimeout(550); // tunggu animasi masuk papan selesai
+      if (kind === 'circle') await circle(arg);
+      else if (kind === 'timing') await timing(arg);
+      else if (kind === 'hold') await hold(arg);
+      else if (kind === 'tap') await taps(arg);
+      else if (kind === 'drag') await drag(shots[i] || `dapur-drag-${i}`);
+      else if (kind === 'cut') await cutAll();
+      else if (kind === 'swipe') {
+        const a = await svgPt(60, 220), z = await svgPt(300, 220);
+        await pg.mouse.move(a.x, a.y); await pg.mouse.down();
+        for (let r = 0; r < 12; r++) { await pg.mouse.move(z.x, z.y, { steps: 6 }); await pg.mouse.move(a.x, a.y, { steps: 6 }); if (parseFloat(await pg.locator('.ck-svg').getAttribute('data-p')) >= 1) break; }
+        await pg.mouse.up();
+      }
+      if (shots[i] && kind !== 'drag') await shot(pg, shots[i]);
+    }
+  };
+
+  // ---- onigiri (8 langkah) ----
   await pg.click('a[href="#/cook/onigiri"]');
   await pg.waitForSelector('#start'); await shot(pg, '19-dapur-resep');
-  await pg.click('#start');
-  await pg.waitForSelector('.ck-svg[data-type="hold"]');
-  await hold(0.72); await shot(pg, '20-dapur-nasi');
-  await waitStage(2); await taps(8); await shot(pg, '21-dapur-nigiri');
-  await waitStage(3); await drag('22-dapur-umeboshi');
-  await waitStage(4); await drag('23-dapur-nori');
+  assert.equal(await pg.locator('.cook-steps li').count(), 8);
+  await play([['circle', 3], ['timing', 0.72], ['hold', 0.72], ['tap', 5], ['tap', 8], ['drag'], ['drag'], ['tap', 5]], { 0: '20-dapur-cuci', 1: '21-dapur-masak-nasi', 3: '22-dapur-garam' });
   await finishCheck(/おにぎり/); await pg.waitForTimeout(1500); await shot(pg, '24-dapur-selesai');
 
-  // ---- ocha ----
-  await pg.goto(URL_ + '/#/cook/ocha'); await pg.click('#start');
-  await pg.waitForSelector('.drag-item'); await drag('25-dapur-teh');
-  await waitStage(2); await hold(0.7);
-  await waitStage(3); await pg.waitForFunction(() => parseFloat(document.querySelector('.ck-svg').dataset.p) >= 0.68, null, { timeout: 8000 });
-  await shot(pg, '26-dapur-seduh'); await pg.mouse.click(200, 400);
-  await waitStage(4); await hold(0.78); await shot(pg, '27-dapur-cangkir');
+  // ---- ocha (7 langkah) ----
+  await pg.goto(URL_ + '/#/cook/ocha');
+  assert.equal(await pg.locator('.cook-steps li').count(), 7);
+  await play([['hold', 0.7], ['timing', 0.72], ['drag'], ['hold', 0.7], ['timing', 0.7], ['circle', 2], ['hold', 0.78]], { 5: '26-dapur-aduk', 6: '27-dapur-cangkir' });
   await finishCheck(/おちゃ/);
 
-  // ---- sushi ----
-  await pg.goto(URL_ + '/#/cook/sushi'); await pg.click('#start');
-  await pg.waitForSelector('.ck-svg[data-type="tap"]'); await taps(6);
-  await waitStage(2); await pg.waitForSelector('.cut-line', { state: 'attached' });
-  const a = await svgPt(30, 200), z = await svgPt(330, 200);
-  await pg.mouse.move(a.x, a.y); await pg.mouse.down(); await pg.mouse.move((a.x + z.x) / 2, a.y, { steps: 12 }); await shot(pg, '28-dapur-potong'); await pg.mouse.move(z.x, z.y, { steps: 12 }); await pg.mouse.up();
-  await waitStage(3); await drag('29-dapur-wasabi');
-  await waitStage(4); await drag('30-dapur-ikan');
+  // ---- sushi (8 langkah) ----
+  await pg.goto(URL_ + '/#/cook/sushi');
+  assert.equal(await pg.locator('.cook-steps li').count(), 8);
+  await play([['circle', 3], ['timing', 0.72], ['tap', 4], ['tap', 6], ['cut'], ['drag'], ['drag'], ['drag']], { 2: '29-dapur-cuka', 7: '30-dapur-celup' });
   await finishCheck(/すし/); await shot(pg, '31-dapur-sushi-jadi');
+
+
+  // ---- hidangan tambahan ----
+  const MORE = {
+    tamagoyaki: { n: 7, re: /たまごやき/, plan: [['tap', 3], ['tap', 4], ['circle', 3], ['hold', 0.7], ['timing', 0.72], ['swipe'], ['cut']], shots: { 5: '32-dapur-gulung' } },
+    misoshiru: { n: 8, re: /みそしる/, plan: [['hold', 0.7], ['timing', 0.72], ['drag'], ['circle', 3], ['cut'], ['drag'], ['drag'], ['hold', 0.73]], shots: {} },
+    takoyaki: { n: 8, re: /たこやき/, plan: [['circle', 3], ['cut'], ['drag'], ['tap', 5], ['timing', 0.72], ['tap', 6], ['drag'], ['tap', 5]], shots: { 5: '33-dapur-takoyaki' } },
+    dango: { n: 6, re: /だんご/, plan: [['circle', 3], ['tap', 6], ['timing', 0.72], ['drag'], ['drag'], ['tap', 5]], shots: { 1: '34-dapur-dango' } },
+    ramen: { n: 9, re: /ラーメン/, plan: [['hold', 0.7], ['timing', 0.72], ['drag'], ['circle', 2], ['cut'], ['hold', 0.73], ['drag'], ['drag'], ['tap', 5]], shots: { 7: '35-dapur-ramen' } },
+    matcha: { n: 6, re: /まっちゃ/, plan: [['hold', 0.7], ['timing', 0.72], ['tap', 4], ['hold', 0.7], ['circle', 4], ['drag']], shots: { 4: '37-dapur-matcha' } },
+    yakitori: { n: 6, re: /やきとり/, plan: [['cut'], ['drag'], ['timing', 0.72], ['tap', 4], ['drag'], ['tap', 4]], shots: { 3: '38-dapur-yakitori' } },
+    udon: { n: 7, re: /うどん/, plan: [['circle', 3], ['swipe'], ['cut'], ['timing', 0.72], ['hold', 0.73], ['drag'], ['tap', 5]], shots: { 1: '39-dapur-udon' } },
+    gyoza: { n: 7, re: /ぎょうざ/, plan: [['circle', 3], ['drag'], ['swipe'], ['drag'], ['timing', 0.72], ['drag'], ['tap', 4]], shots: { 2: '40-dapur-gyoza' } },
+    okonomiyaki: { n: 7, re: /おこのみやき/, plan: [['cut'], ['circle', 3], ['hold', 0.7], ['timing', 0.72], ['tap', 3], ['drag'], ['tap', 5]], shots: { 4: '41-dapur-okonomiyaki' } },
+    tempura: { n: 7, re: /てんぷら/, plan: [['circle', 3], ['drag'], ['timing', 0.72], ['drag'], ['timing', 0.72], ['drag'], ['tap', 4]], shots: { 4: '36-dapur-tempura' } },
+  };
+  for (const [id, m] of Object.entries(MORE)) {
+    await pg.goto(URL_ + '/#/cook/' + id);
+    await pg.waitForSelector('#start');
+    assert.equal(await pg.locator('.cook-steps li').count(), m.n, id);
+    try { await play(m.plan, m.shots); } catch (e) { await shot(pg, `gagal-${id}`); throw new Error(id + ': ' + e.message); }
+    await finishCheck(m.re);
+    await shot(pg, `dapur-jadi-${id}`);
+  }
+  await pg.goto(URL_ + '/#/cook'); await pg.waitForSelector('.cook-card');
+  assert.equal(await pg.locator('.cook-card').count(), 14);
+  await shot(pg, '18-dapur-menu');
 
   // lepas di tempat salah: item kembali, tahap tidak selesai
   await pg.goto(URL_ + '/#/cook/onigiri'); await pg.click('#start');
-  await pg.waitForSelector('.ck-svg[data-type="hold"]'); await hold(0.72); await waitStage(2); await taps(8); await waitStage(3);
+  await pg.waitForSelector('.ck-svg[data-type="circle"]'); await circle(3); await waitStage(2); await timing(0.72); await waitStage(3); await hold(0.72); await waitStage(4); await taps(5); await waitStage(5); await taps(8); await waitStage(6);
   const it = await box('.drag-item');
   await pg.mouse.move(it.x, it.y); await pg.mouse.down(); await pg.mouse.move(it.x + 5, it.y - 5, { steps: 3 }); await pg.mouse.up();
   await pg.waitForTimeout(500);
