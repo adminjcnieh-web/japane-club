@@ -963,3 +963,88 @@ describe('Peringatan tidak hadir beruntun', () => {
     assert.deepEqual(r.data.items, []);
   });
 });
+
+describe('Telegram harian + ubah status massal', () => {
+  const seedMeeting = (n, status = 'closed', perUid = {}) => {
+    const id = `tmeeting${n}`;
+    fake.putDoc(`meetings/${id}`, { name: `Pertemuan ${n}`, date: `2026-10-0${n}`, startTime: '10:00', endTime: '11:00', status, createdAt: new Date() });
+    for (const [uid, st] of Object.entries(perUid)) fake.putDoc(`attendance/${id}_${uid}`, { meetingId: id, meetingName: `Pertemuan ${n}`, meetingDate: `2026-10-0${n}`, uid, status: st, method: 'auto' });
+    return id;
+  };
+  let sent, realFetch;
+  beforeEach(() => {
+    sent = [];
+    realFetch = globalThis.fetch;
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).startsWith('https://api.telegram.org/')) {
+        const body = JSON.parse(init.body);
+        sent.push({ url: String(url), ...body });
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return inner(url, init);
+    };
+  });
+  afterEach(() => { globalThis.fetch = realFetch; });
+
+  test('jadwal harian: kirim sekali, tidak berulang bila daftar sama, kirim lagi bila bertambah', async () => {
+    env.TELEGRAM_BOT_TOKEN = '123:abc'; env.TELEGRAM_CHAT_ID = '777, 888';
+    const { runDailyAlert } = await import('../src/routes/alerts.js');
+    seedMeeting(1, 'closed', { uidMem00001: 'alfa', uidMem00002: 'hadir' });
+    seedMeeting(2, 'closed', { uidMem00001: 'izin', uidMem00002: 'hadir' });
+    assert.equal((await runDailyAlert(env)).reason, 'none'); // baru 2 pertemuan
+    seedMeeting(3, 'closed', { uidMem00001: 'sakit', uidMem00002: 'terlambat' });
+    const r1 = await runDailyAlert(env);
+    assert.equal(r1.sent, true); assert.equal(r1.count, 1);
+    assert.equal(sent.length, 2); // dua chat id
+    assert.deepEqual(sent.map((s) => s.chat_id), ['777', '888']);
+    assert.match(sent[0].text, /Ani Member/); assert.doesNotMatch(sent[0].text, /Budi Member/);
+    assert.ok(sent[0].url.includes('/bot123:abc/'));
+    assert.equal((await runDailyAlert(env)).reason, 'unchanged');
+    assert.equal(sent.length, 2);
+    seedMeeting(4, 'closed', { uidMem00001: 'alfa', uidMem00002: 'alfa' });
+    seedMeeting(5, 'closed', { uidMem00001: 'alfa', uidMem00002: 'alfa' });
+    seedMeeting(6, 'closed', { uidMem00001: 'alfa', uidMem00002: 'alfa' });
+    const r2 = await runDailyAlert(env);
+    assert.equal(r2.sent, true); assert.equal(r2.count, 2);
+  });
+
+  test('tanpa token Telegram: jadwal diam, tombol tes memberi pesan jelas, hanya admin', async () => {
+    const { runDailyAlert } = await import('../src/routes/alerts.js');
+    delete env.TELEGRAM_BOT_TOKEN; delete env.TELEGRAM_CHAT_ID;
+    assert.equal((await runDailyAlert(env)).reason, 'telegram_not_configured');
+    const admin = await login('admin1');
+    const r = await api('POST', '/api/alerts/telegram-test', { token: admin });
+    assert.equal(r.status, 400); assert.equal(r.data.error.code, 'telegram_not_configured');
+    assert.equal((await api('GET', '/api/alerts/absence', { token: admin })).data.telegram, false);
+    env.TELEGRAM_BOT_TOKEN = 't'; env.TELEGRAM_CHAT_ID = '1';
+    assert.equal((await api('POST', '/api/alerts/telegram-test', { token: admin })).status, 200);
+    assert.equal(sent.length, 1);
+    assert.equal((await api('GET', '/api/alerts/absence', { token: admin })).data.telegram, true);
+    assert.equal((await api('POST', '/api/alerts/telegram-test', { token: await login('mem1') })).status, 403);
+    // Telegram menolak -> 502, token tidak bocor
+    const inner2 = globalThis.fetch;
+    globalThis.fetch = async (url, init) => String(url).startsWith('https://api.telegram.org/') ? new Response(JSON.stringify({ ok: false, description: 'chat not found' }), { status: 400 }) : inner2(url, init);
+    const bad = await api('POST', '/api/alerts/telegram-test', { token: admin });
+    assert.equal(bad.status, 502); assert.match(bad.data.error.message, /chat not found/); assert.doesNotMatch(JSON.stringify(bad.data), /bot/);
+  });
+
+  test('ubah status massal: buat + ubah + lewati; validasi; hanya staf berhak', async () => {
+    const admin = await login('admin1');
+    const id = seedMeeting(1, 'open', { uidMem00001: 'hadir' });
+    const r = await api('PUT', `/api/meetings/${id}/attendance`, { token: admin, body: { status: 'alfa', uids: ['uidMem00001', 'uidMem00002', 'uidMem00003', 'uidOld00001', 'tidak-ada'] } });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.changed, 3); // Ani diubah, Budi & Cici dibuat
+    assert.equal(r.data.skipped, 2); // nonaktif di sesi berjalan + uid tidak ada
+    const d = await api('GET', `/api/meetings/${id}`, { token: admin });
+    assert.equal(d.status, 200, JSON.stringify(d.data));
+    assert.equal(d.data.records.filter((x) => x.status === 'alfa').length, 3);
+    const again = await api('PUT', `/api/meetings/${id}/attendance`, { token: admin, body: { status: 'alfa', uids: ['uidMem00001'] } });
+    assert.equal(again.data.unchanged, 1); assert.equal(again.data.changed, 0);
+    assert.equal((await api('PUT', `/api/meetings/${id}/attendance`, { token: admin, body: { status: 'bukan', uids: ['uidMem00001'] } })).status, 400);
+    assert.equal((await api('PUT', `/api/meetings/${id}/attendance`, { token: admin, body: { status: 'izin', uids: [] } })).status, 400);
+    assert.equal((await api('PUT', `/api/meetings/${id}/attendance`, { token: admin, body: { status: 'izin', uids: Array.from({ length: 101 }, (_, i) => 'u' + i) } })).status, 400);
+    assert.equal((await api('PUT', `/api/meetings/tidakada1/attendance`, { token: admin, body: { status: 'izin', uids: ['uidMem00001'] } })).status, 404);
+    assert.equal((await api('PUT', `/api/meetings/${id}/attendance`, { token: await login('mem1'), body: { status: 'izin', uids: ['uidMem00001'] } })).status, 403);
+  });
+});

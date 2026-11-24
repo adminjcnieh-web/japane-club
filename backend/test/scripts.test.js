@@ -55,3 +55,33 @@ test('data contoh dapat dibuat lalu dihapus bersih tanpa menyentuh data asli', a
   assert.ok(fake.getDoc(`usernames/pembina`));
   assert.equal((await login('pembina', 'Rahasia123')).status, 200);
 });
+
+test('pemulihan admin: reset password, buat ulang setelah terhapus, aman untuk anggota biasa', async () => {
+  const { recoverAdmin } = await import('../../scripts/recover-admin.mjs');
+  const { deleteAuthUser } = await import('../src/lib/google.js');
+  const a = await bootstrapAdmin(fake.env, { username: 'pembina', fullName: 'Bu Pembina', password: 'Rahasia123' });
+  // 1) lupa password: admin masih ada -> password diganti, uid sama
+  const r1 = await recoverAdmin(fake.env, { username: 'pembina', fullName: 'Bu Pembina', password: 'Baru12345' });
+  assert.equal(r1.mode, 'reset'); assert.equal(r1.uid, a.uid);
+  assert.equal((await login('pembina', 'Rahasia123')).status, 401);
+  assert.equal((await login('pembina', 'Baru12345')).status, 200);
+  // 2) admin lain masih aktif -> ditolak
+  await assert.rejects(recoverAdmin(fake.env, { username: 'lain', fullName: 'Orang Lain', password: 'Baru12345' }), /Admin lain masih aktif/);
+  // 3) akun Auth terhapus, dokumen tertinggal -> dibuat ulang
+  await deleteAuthUser(fake.env, a.uid);
+  const r2 = await recoverAdmin(fake.env, { username: 'pembina', fullName: 'Bu Pembina', password: 'Baru12345' });
+  assert.equal(r2.mode, 'create'); assert.notEqual(r2.uid, a.uid);
+  assert.equal((await login('pembina', 'Baru12345')).data.user.role, 'admin');
+  assert.ok(!fake.getDoc(`users/${a.uid}`));
+  // 4) dokumen terhapus, akun Auth tertinggal -> dibuat ulang
+  const docsBefore = fake.countDocs('users/');
+  fake.state.docs.delete(`users/${r2.uid}`); fake.state.docs.delete('usernames/pembina');
+  const r3 = await recoverAdmin(fake.env, { username: 'pembina', fullName: 'Bu Pembina', password: 'Baru12345' });
+  assert.equal(r3.mode, 'create'); assert.equal(fake.countDocs('users/'), docsBefore);
+  assert.equal((await login('pembina', 'Baru12345')).status, 200);
+  // 5) username milik anggota biasa tidak boleh dirampas
+  fake.seedUser({ uid: 'uidAnggota1', username: 'anggota1', fullName: 'Anggota Satu' });
+  await deleteAuthUser(fake.env, r3.uid);
+  await assert.rejects(recoverAdmin(fake.env, { username: 'anggota1', fullName: 'Admin Baru', password: 'Baru12345' }), /anggota biasa/);
+  assert.ok(fake.getDoc('users/uidAnggota1'));
+});

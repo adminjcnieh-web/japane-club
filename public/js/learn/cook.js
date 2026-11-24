@@ -537,7 +537,7 @@ function intro(container) {
 export async function cookMenuView({ container }) {
   container.innerHTML = `<div class="cook-wrap"><p style="margin-bottom:12px"><a href="#/learn" class="small">← Belajar</a></p>` +
     pageHead({ title: 'Dapur Jepang', subtitle: 'Masak hidangan khas Jepang dengan gerakan jarimu. Setiap langkah punya nama bahasa Jepangnya.' }) +
-    `<div class="cat-grid">${RECIPES.map((r, i) => `<a class="cat-card cook-card" href="#/cook/${r.id}" style="--i:${i}"><div class="cook-thumb">${dishSvg(r.id)}</div><span class="cat-jp">${esc(r.jp)}</span><h3>${esc(r.name)}</h3><p>${esc(r.blurb)}</p><span class="small muted">${r.stages.length} langkah</span></a>`).join('')}</div></div>`;
+    `<a class="cook-banner" href="#/cook/order" style="margin:0 0 16px"><span aria-hidden="true">注文</span><div><strong>Mode Pesanan</strong><div class="small">3 pelanggan memesan hidangan acak. Masak secepat dan serapi mungkin.</div></div></a><div class="cat-grid">${RECIPES.map((r, i) => `<a class="cat-card cook-card" href="#/cook/${r.id}" style="--i:${i}"><div class="cook-thumb">${dishSvg(r.id)}</div><span class="cat-jp">${esc(r.jp)}</span><h3>${esc(r.name)}</h3><p>${esc(r.blurb)}</p><span class="small muted">${r.stages.length} langkah</span></a>`).join('')}</div></div>`;
   intro(container.firstElementChild);
 }
 
@@ -598,4 +598,85 @@ export async function cookPlayView({ container, params }) {
 
   recipeCard();
   return () => stopStage?.();
+}
+
+// ---------- Mode Pesanan: 3 pelanggan, hidangan acak, dihitung waktu dan bintang (tanpa papan peringkat) ----------
+const fmtTime = (ms) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+const starCount = (scores) => { const avg = scores.reduce((a, b) => a + b, 0) / scores.length; return avg >= 0.88 ? 3 : avg >= 0.65 ? 2 : 1; };
+const starRow = (n) => [0, 1, 2].map((i) => `<svg class="cook-star ${i < n ? 'on' : ''}" style="--d:${i * 0.25}s" viewBox="0 0 24 24"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.5 5.8 21l1.4-7L2 9.3l7-.8z"/></svg>`).join('');
+
+export async function cookOrderView({ container }) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cook-wrap';
+  container.replaceChildren(wrap);
+  const back = `<p style="margin-bottom:12px"><a href="#/cook" class="small">← Pilih hidangan</a></p>`;
+  let orders = [], oi = 0, results = [], stopStage = null, timer = null;
+  const clean = () => { stopStage?.(); stopStage = null; clearInterval(timer); timer = null; };
+
+  const start = () => {
+    clean();
+    const pool = RECIPES.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    orders = pool.slice(0, 3); oi = 0; results = [];
+    wrap.innerHTML = back + pageHead({ title: 'Mode Pesanan', subtitle: 'Ada 3 pelanggan. Masak setiap pesanan secepat dan serapi mungkin.' }) +
+      `<div class="cook-coach">${MASCOT}<p class="cook-bubble">Selamat datang di dapur! Siap melayani pelanggan?</p></div>
+       <div class="cook-actions"><button class="btn btn-primary btn-lg" id="order-go">Buka dapur</button></div>`;
+    wrap.querySelector('#order-go').addEventListener('click', customer);
+  };
+
+  const customer = () => {
+    clean();
+    const rec = orders[oi];
+    wrap.innerHTML = back + pageHead({ title: `Pelanggan ${oi + 1} dari 3`, subtitle: 'Pesanan baru masuk.' }) +
+      `<div class="cook-coach">${MASCOT}<p class="cook-bubble">Satu <strong class="jp">${esc(rec.jp)}</strong> (${esc(rec.name)}), tolong!</p></div>
+       <div class="cook-thumb big">${dishSvg(rec.id)}</div>
+       <div class="cook-actions" style="margin-top:14px"><button class="btn btn-primary btn-lg" id="order-start">Mulai masak</button></div>`;
+    wrap.querySelector('#order-start').addEventListener('click', () => cook(rec));
+  };
+
+  const cook = (rec) => {
+    let idx = 0; const scores = []; const t0 = performance.now();
+    const go = () => {
+      stopStage?.();
+      if (idx >= rec.stages.length) { clearInterval(timer); return served(rec, scores, performance.now() - t0); }
+      const s = rec.stages[idx];
+      wrap.innerHTML = `<div class="cook-head"><span class="small muted">${esc(rec.jp)} - Langkah ${idx + 1} dari ${rec.stages.length} - Waktu <b id="otimer">${fmtTime(performance.now() - t0)}</b></span>
+        <div class="cook-word"><strong class="jp">${esc(s.jp)}</strong><span>${esc(s.ro)} = ${esc(s.id)}</span></div>
+        <div class="meter"><i style="width:${(idx / rec.stages.length) * 100}%"></i></div></div>
+        <div class="cook-coach">${MASCOT}<p class="cook-bubble cook-prompt" id="bubble">${esc(s.text)}</p></div>
+        <div class="cook-boardwrap"><div class="cook-board" id="board"></div><div class="cook-flash" id="flash" role="status"></div></div>`;
+      const board = wrap.querySelector('#board'), flash = wrap.querySelector('#flash');
+      stopStage = runStage(board, s, (score, msg) => {
+        scores.push(score); flash.textContent = msg; flash.classList.add('show');
+        wrap.querySelector('.cook-coach').classList.add('happy');
+        setTimeout(() => { if (wrap.isConnected) { idx++; go(); } }, 900);
+      });
+    };
+    clearInterval(timer);
+    timer = setInterval(() => { const el = wrap.querySelector('#otimer'); if (!wrap.isConnected) clearInterval(timer); else if (el) el.textContent = fmtTime(performance.now() - t0); }, 300);
+    go();
+  };
+
+  const served = (rec, scores, ms) => {
+    const stars = starCount(scores);
+    results.push({ rec, stars, ms });
+    const last = oi >= orders.length - 1;
+    wrap.innerHTML = pageHead({ title: `${rec.jp} sudah disajikan!`, subtitle: `Waktu memasak ${fmtTime(ms)}.` }) +
+      `<div class="order-after cook-done"><div class="cook-thumb big served">${dishSvg(rec.id, rec.id === 'ocha' || rec.id === 'matcha')}</div>
+        <div class="cook-stars" aria-label="${stars} dari 3 bintang">${starRow(stars)}</div>
+        <div class="cook-actions"><button class="btn btn-primary btn-lg" id="order-next">${last ? 'Lihat hasil' : 'Pelanggan berikutnya'}</button></div></div>`;
+    wrap.querySelector('#order-next').addEventListener('click', () => { if (last) summary(); else { oi++; customer(); } });
+  };
+
+  const summary = () => {
+    const total = results.reduce((a, r) => a + r.ms, 0);
+    const avg = Math.round(results.reduce((a, r) => a + r.stars, 0) / results.length * 10) / 10;
+    wrap.innerHTML = back + pageHead({ title: 'Semua pesanan selesai!', subtitle: `Total waktu ${fmtTime(total)}, rata-rata ${avg} dari 3 bintang.` }) +
+      `<div class="order-summary cook-done"><ul class="cook-vocab">${results.map((r) => `<li><strong class="jp">${esc(r.rec.jp)}</strong> <span class="muted">${esc(r.rec.name)}</span><span style="margin-left:auto" class="num">${'★'.repeat(r.stars)}${'☆'.repeat(3 - r.stars)} &nbsp; ${fmtTime(r.ms)}</span></li>`).join('')}</ul>
+        <div class="cook-actions"><button class="btn btn-primary btn-lg" id="order-again">Pesanan baru</button> <a class="btn btn-lg" href="#/cook">Menu hidangan</a></div></div>`;
+    wrap.querySelector('#order-again').addEventListener('click', start);
+  };
+
+  start();
+  return clean;
 }

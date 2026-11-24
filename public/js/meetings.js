@@ -189,8 +189,27 @@ export async function meetingDetailView({ container, user, can, params, isStale 
             ? `<div class="table-wrap"><table class="table stackable"><thead><tr><th>Nama</th><th>Kelas</th><th>Status</th><th>Waktu</th><th>Diubah oleh</th></tr></thead><tbody>${r.records.map((x) => `<tr><td class="cell-primary"><strong>${esc(x.memberName)}</strong>${x.note ? `<div class="small muted">${esc(x.note)}</div>` : ''}</td><td data-label="Kelas">${esc(x.kelas || '-')}</td><td data-label="Status">${canEdit ? statusSelect(x.uid, x.status, false) : statusBadge(x.status)}</td><td data-label="Waktu">${esc(fmtDateTime(x.recordedAt))}</td><td data-label="Diubah oleh">${esc(x.updatedByName || '-')}</td></tr>`).join('')}</tbody></table></div>`
             : `<div class="panel-body">${emptyState({ iconName: 'users', title: 'Belum ada kehadiran tercatat', text: m.status === 'open' ? 'Anggota yang scan QR akan muncul di sini.' : 'Buka absensi agar anggota bisa scan QR.' })}</div>`
         }</div></div>
-        ${r.pending.length ? `<div class="panel" style="margin-top:18px"><div class="panel-head"><h2>Belum tercatat (${r.pending.length})</h2></div><div class="panel-body panel-flush" style="padding-top:12px"><div class="table-wrap"><table class="table stackable"><thead><tr><th>Nama</th><th>Kelas</th><th>${canEdit ? 'Tandai' : 'Status'}</th></tr></thead><tbody>${r.pending.map((p) => `<tr><td class="cell-primary"><strong>${esc(p.fullName)}</strong></td><td data-label="Kelas">${esc(p.kelas || '-')}</td><td data-label="${canEdit ? 'Tandai' : 'Status'}">${canEdit ? statusSelect(p.uid, '', true) : '<span class="badge badge-belum">Belum hadir</span>'}</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}`;
+        ${r.pending.length ? `<div class="panel" style="margin-top:18px"><div class="panel-head"><h2>Belum tercatat (${r.pending.length})</h2></div>
+          ${canEdit ? `<div class="toolbar" style="padding:12px 16px 0;gap:10px;flex-wrap:wrap;align-items:center"><label class="check" style="padding:0"><input type="checkbox" id="pd-all" /><span>Pilih semua</span></label><select class="select" id="pd-status" aria-label="Status untuk yang dipilih" style="width:auto;min-height:40px"><option value="">Tandai terpilih sebagai</option>${STATUS_KEYS.map((k) => `<option value="${k}">${STATUS_LABEL[k]}</option>`).join('')}</select><button class="btn btn-primary btn-sm" type="button" id="pd-apply" disabled>Terapkan</button><span class="small muted" id="pd-count"></span></div>` : ''}
+          <div class="panel-body panel-flush" style="padding-top:12px"><div class="table-wrap"><table class="table stackable"><thead><tr>${canEdit ? '<th></th>' : ''}<th>Nama</th><th>Kelas</th><th>${canEdit ? 'Tandai' : 'Status'}</th></tr></thead><tbody>${r.pending.map((p) => `<tr>${canEdit ? `<td data-label="Pilih"><input type="checkbox" class="pd-chk" data-uid="${esc(p.uid)}" aria-label="Pilih ${esc(p.fullName)}" /></td>` : ''}<td class="cell-primary"><strong>${esc(p.fullName)}</strong></td><td data-label="Kelas">${esc(p.kelas || '-')}</td><td data-label="${canEdit ? 'Tandai' : 'Status'}">${canEdit ? statusSelect(p.uid, '', true) : '<span class="badge badge-belum">Belum hadir</span>'}</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}`;
 
+      const chks = [...container.querySelectorAll('.pd-chk')];
+      if (chks.length) {
+        const all = container.querySelector('#pd-all'), st = container.querySelector('#pd-status'), apply = container.querySelector('#pd-apply'), cnt = container.querySelector('#pd-count');
+        const sync = () => { const n = chks.filter((c) => c.checked).length; cnt.textContent = n ? `${n} dipilih` : ''; apply.disabled = !n || !st.value; all.checked = n === chks.length; };
+        all.addEventListener('change', () => { chks.forEach((c) => { c.checked = all.checked; }); sync(); });
+        chks.forEach((c) => c.addEventListener('change', sync));
+        st.addEventListener('change', sync);
+        apply.addEventListener('click', async () => {
+          const uids = chks.filter((c) => c.checked).map((c) => c.dataset.uid);
+          if (!await confirmDialog({ title: 'Ubah status banyak anggota?', message: `${uids.length} anggota akan ditandai ${STATUS_LABEL[st.value]}.`, confirmLabel: 'Ya, ubah' })) return;
+          try {
+            const res = await api.put(`/api/meetings/${id}/attendance`, { status: st.value, uids });
+            toast(`${res.changed} anggota ditandai ${STATUS_LABEL[st.value]}${res.skipped ? `, ${res.skipped} dilewati` : ''}.`);
+            await load();
+          } catch (err) { toast(err.message, 'error'); }
+        });
+      }
       container.querySelectorAll('select[data-set]').forEach((sel) => sel.addEventListener('change', () => { if (sel.value) setStatus(sel.dataset.set, sel.value, sel); }));
       container.querySelector('#mt-open')?.addEventListener('click', async (e) => {
         try { await withBusy(e.currentTarget, 'Membuka', () => openAttendance(m)); } catch (err) { toast(err.message, 'error'); }

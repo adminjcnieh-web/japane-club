@@ -61,7 +61,7 @@ export async function moreView({ container, user }, { navFor, doLogout }) {
 export async function settingsView({ container, isStale }) {
   container.innerHTML = pageHead({ title: 'Pengaturan klub' }) + `<div class="panel">${loadingBlock()}</div>`;
   try {
-    const { settings: s } = await api.get('/api/settings');
+    const [{ settings: s }, al] = await Promise.all([api.get('/api/settings'), api.get('/api/alerts/absence').catch(() => null)]);
     if (isStale()) return;
     container.innerHTML = pageHead({ title: 'Pengaturan klub', subtitle: 'Informasi ini tampil di aplikasi dan menjadi nilai bawaan pertemuan baru.' }) + `
       <div class="panel"><div class="panel-body"><form id="st-form" novalidate style="max-width:560px">
@@ -73,7 +73,19 @@ export async function settingsView({ container, isStale }) {
         <div class="field"><label for="st-absence">Peringatan tidak hadir beruntun</label><input class="input" id="st-absence" name="absenceAlertStreak" type="number" min="2" max="10" inputmode="numeric" required value="${esc(s.absenceAlertStreak)}" /><span class="hint">Admin diberi tahu jika anggota alfa sebanyak ini berturut-turut (2 sampai 10).</span></div>
         <div id="st-err"></div>
         <button class="btn btn-primary" type="submit" id="st-save">Simpan pengaturan</button>
-      </form></div></div>`;
+      </form></div></div>
+      <div class="panel" style="margin-top:18px"><div class="panel-head"><h2>Notifikasi Telegram</h2></div><div class="panel-body" style="max-width:560px">
+        <p>${al?.telegram ? '<strong>Sudah diatur.</strong> Setiap sore (17.00 WIB) admin dapat pesan Telegram bila ada anggota yang tidak hadir beruntun. Pesan hanya dikirim bila daftarnya berubah.' : '<strong>Belum diatur.</strong> Isi <code>TELEGRAM_BOT_TOKEN</code> dan <code>TELEGRAM_CHAT_ID</code> di Cloudflare (Settings, Variables and Secrets). Langkahnya ada di README.'}</p>
+        <div id="tg-msg" style="margin-top:10px"></div>
+        <button class="btn" type="button" id="tg-test" style="margin-top:10px">Kirim pesan tes</button>
+      </div></div>`;
+    container.querySelector('#tg-test').addEventListener('click', async (e) => {
+      const b = e.currentTarget, box = container.querySelector('#tg-msg');
+      b.disabled = true; box.innerHTML = '';
+      try { await api.post('/api/alerts/telegram-test', {}); toast('Pesan tes terkirim. Cek Telegram kamu.'); }
+      catch (err) { box.innerHTML = `<div class="form-error" role="alert">${icon('alert')}<span>${esc(err.message)}</span></div>`; }
+      finally { b.disabled = false; }
+    });
     const form = container.querySelector('#st-form');
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

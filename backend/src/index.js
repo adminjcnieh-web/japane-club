@@ -36,6 +36,7 @@ const ROUTES = [
 
   ['GET', '/api/dashboard', dashboard.get],
   ['GET', '/api/alerts/absence', alerts.absence],
+  ['POST', '/api/alerts/telegram-test', alerts.telegramTest],
 
   ['GET', '/api/members', members.list],
   ['POST', '/api/members', members.create],
@@ -58,6 +59,7 @@ const ROUTES = [
   ['POST', '/api/meetings/:id/close', meetings.close],
   ['GET', '/api/meetings/:id/qr', meetings.qr],
   ['PUT', '/api/meetings/:id/attendance/:uid', attendance.setStatus],
+  ['PUT', '/api/meetings/:id/attendance', attendance.bulkSet],
 
   ['POST', '/api/attendance/scan', attendance.scan],
   ['PUT', '/api/meetings/:id/signature', signatures.put],
@@ -137,6 +139,10 @@ export default {
     if (url.pathname.startsWith('/api/') || url.pathname === '/api') return handleApi(request, env, url);
     if (env.ASSETS) return env.ASSETS.fetch(request);
     return new Response('Not found', { status: 404 });
+  },
+  // Jadwal harian (lihat [triggers] di wrangler.toml): kirim peringatan tidak hadir beruntun ke Telegram.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(alerts.runDailyAlert(env).catch((e) => console.error('Peringatan harian gagal:', e?.message || e)));
   },
 };
 

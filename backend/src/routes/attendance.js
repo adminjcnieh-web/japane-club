@@ -142,3 +142,44 @@ export async function setStatus(ctx) {
   }
   return { record: recordOut({ id: `${meetingId}_${uid}`, ...record }) };
 }
+
+/** Ubah status banyak anggota sekaligus (maks. 100) pada satu pertemuan. */
+export async function bulkSet(ctx) {
+  requirePermission(ctx, 'editAttendance');
+  const meetingId = ctx.params.id;
+  const b = await ctx.json();
+  const status = v.oneOf(b.status, v.STATUSES, 'Status');
+  if (!Array.isArray(b.uids) || !b.uids.length) throw new HttpError(400, 'Pilih minimal satu anggota.', 'validation');
+  const uids = [...new Set(b.uids.map(String))];
+  if (uids.length > 100) throw new HttpError(400, 'Maksimal 100 anggota sekali ubah.', 'validation');
+
+  if (!/^[A-Za-z0-9]{8,40}$/.test(meetingId)) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
+  const meeting = await ctx.fs.get(`meetings/${meetingId}`);
+  if (!meeting || meeting.deletedAt) throw new HttpError(404, 'Pertemuan tidak ditemukan', 'not_found');
+  const [users, recs] = await Promise.all([ctx.fs.list('users'), ctx.fs.query('attendance', { where: [['meetingId', '==', meetingId]] })]);
+  const byUid = new Map(users.map((u) => [u.id, u]));
+  const existing = new Map(recs.map((r) => [r.uid, r]));
+  const actorName = ctx.auth.user.fullName;
+  const ops = [];
+  let changed = 0, unchanged = 0, skipped = 0;
+  for (const uid of uids) {
+    const member = byUid.get(uid);
+    const ex = existing.get(uid);
+    if (!member || (!ex && !member.active && meeting.status !== 'closed')) { skipped++; continue; }
+    const audit = (from) => auditOp({ action: 'attendance.update', actor: ctx.auth, targetUid: uid, targetName: member.fullName, meetingId, meetingName: meeting.name, detail: `${from || '-'} -> ${status} (massal)` }, ctx.now);
+    if (ex) {
+      if (ex.status === status) { unchanged++; continue; }
+      ops.push(op.update(`attendance/${meetingId}_${uid}`, { status, method: ex.method === 'qr' ? 'qr' : 'manual', updatedAt: ctx.now, updatedBy: ctx.auth.uid, updatedByName: actorName }), audit(ex.status));
+    } else {
+      ops.push(op.create(`attendance/${meetingId}_${uid}`, { meetingId, meetingName: meeting.name, meetingDate: meeting.date, uid, memberName: member.fullName, username: member.username, kelas: member.kelas || '', status, method: 'manual', recordedAt: ctx.now, updatedAt: ctx.now, updatedBy: ctx.auth.uid, updatedByName: actorName, note: '' }), audit(null));
+    }
+    changed++;
+  }
+  if (ops.length) {
+    try { await ctx.fs.commit(ops); } catch (e) {
+      if (e instanceof FirestoreError && CONFLICT_CODES.includes(e.code)) throw new HttpError(409, 'Data berubah saat disimpan. Muat ulang lalu coba lagi.', 'conflict');
+      throw e;
+    }
+  }
+  return { changed, unchanged, skipped };
+}

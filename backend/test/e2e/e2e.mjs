@@ -1014,7 +1014,7 @@ await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan geraka
   await pg.waitForSelector('.cook-intro', { state: 'detached', timeout: 6000 });
   await pg.waitForSelector('.cook-card');
   await shot(pg, '18-dapur-menu');
-  const box = async (sel) => { const b = await pg.locator(sel).first().boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
+  const box = async (sel) => { let b = null; for (let i = 0; i < 10 && !b; i++) { b = await pg.locator(sel).first().boundingBox(); if (!b) await pg.waitForTimeout(150); } if (!b) throw new Error('elemen tidak terlihat: ' + sel); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
   const svgPt = async (x, y) => { const b = await pg.locator('.ck-svg').boundingBox(); return { x: b.x + (x / 360) * b.width, y: b.y + (y / 380) * b.height }; };
   const waitStage = (n) => pg.waitForFunction((n) => document.querySelector('.cook-head .small')?.textContent.includes('Langkah ' + n), n, { timeout: 12000 });
   const hold = async (to) => {
@@ -1123,6 +1123,57 @@ await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan geraka
   assert.equal(await pg.locator('.cook-card').count(), 14);
   await shot(pg, '18-dapur-menu');
 
+
+  // ---- Mode Pesanan (solver umum: membaca jenis gerakan dari layar) ----
+  const finished = () => pg.evaluate(() => !!document.querySelector('.ck-svg.ck-finished'));
+  const solve = async () => {
+    const type = await pg.locator('.ck-svg').getAttribute('data-type');
+    if (type === 'hold') await hold(0.72);
+    else if (type === 'timing') await timing(0.72);
+    else if (type === 'drag') await drag('dapur-order-drag');
+    else if (type === 'cut') await cutAll();
+    else if (type === 'tap') { const c = await box('.ck-svg'); for (let i = 0; i < 14 && !(await finished()); i++) await pg.mouse.click(c.x, c.y); }
+    else if (type === 'circle') {
+      const c0 = await svgPt(180 + 76, 196); await pg.mouse.move(c0.x, c0.y); await pg.mouse.down();
+      for (let i = 1; i <= 600 && !(await finished()); i++) { const t = (i / 36) * 2 * Math.PI; const q = await svgPt(180 + Math.cos(t) * 76, 196 + Math.sin(t) * 76); await pg.mouse.move(q.x, q.y); }
+      await pg.mouse.up();
+    } else if (type === 'swipe') {
+      const a = await svgPt(60, 220), z = await svgPt(300, 220);
+      await pg.mouse.move(a.x, a.y); await pg.mouse.down();
+      for (let r = 0; r < 14 && !(await finished()); r++) { await pg.mouse.move(z.x, z.y, { steps: 6 }); await pg.mouse.move(a.x, a.y, { steps: 6 }); }
+      await pg.mouse.up();
+    } else throw new Error('jenis gerakan tidak dikenal: ' + type);
+  };
+  await pg.goto(URL_ + '/#/cook'); await pg.waitForSelector('.cook-banner');
+  await pg.click('a[href="#/cook/order"]');
+  await pg.waitForSelector('#order-go'); await shot(pg, '42-pesanan-mulai');
+  await pg.click('#order-go');
+  for (let n = 1; n <= 3; n++) {
+    await pg.waitForSelector('#order-start');
+    assert.match(await pg.locator('h1').innerText(), new RegExp(`Pelanggan ${n} dari 3`));
+    if (n === 1) await shot(pg, '43-pesanan-pelanggan');
+    await pg.click('#order-start');
+    for (let guard = 0; guard < 14; guard++) {
+      await pg.waitForSelector('.ck-svg:not(.ck-finished), .order-after', { timeout: 12000 });
+      if (await pg.locator('.order-after').count()) break;
+      await pg.waitForTimeout(550);
+      if (await pg.locator('.order-after').count()) break;
+      if (n === 1 && guard === 0) await shot(pg, '44-pesanan-memasak');
+      const head = await pg.evaluate(() => document.querySelector('.cook-head .small')?.textContent);
+      if (head == null) continue;
+      await solve();
+      await pg.waitForFunction((h) => document.querySelector('.order-after') || document.querySelector('.cook-head .small')?.textContent !== h, head, { timeout: 12000 });
+    }
+    await pg.waitForSelector('.order-after', { timeout: 15000 });
+    assert.ok((await pg.locator('.cook-star.on').count()) >= 1);
+    await pg.click('#order-next');
+  }
+  await pg.waitForSelector('.order-summary');
+  assert.equal(await pg.locator('.order-summary li').count(), 3);
+  assert.match(await pg.locator('h1').innerText(), /Semua pesanan selesai/);
+  await noOverflow(pg); await shot(pg, '45-pesanan-hasil');
+  await pg.click('#order-again'); await pg.waitForSelector('#order-go');
+
   // lepas di tempat salah: item kembali, tahap tidak selesai
   await pg.goto(URL_ + '/#/cook/onigiri'); await pg.click('#start');
   await pg.waitForSelector('.ck-svg[data-type="circle"]'); await circle(3); await waitStage(2); await timing(0.72); await waitStage(3); await hold(0.72); await waitStage(4); await taps(5); await waitStage(5); await taps(8); await waitStage(6);
@@ -1131,6 +1182,39 @@ await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan geraka
   await pg.waitForTimeout(500);
   assert.equal(await pg.locator('.cook-flash.show').count(), 0, 'lepas di tempat salah tidak menyelesaikan tahap');
   await pg.context().close();
+});
+
+console.log('\n== Ubah status massal + Telegram ==');
+await step('admin menandai banyak anggota sekaligus dan membuka pengaturan Telegram', async () => {
+  const mid = 'bulkmeet01';
+  fake.putDoc(`meetings/${mid}`, { name: 'Pertemuan Massal', date: '2099-02-01', startTime: '10:00', endTime: '11:00', status: 'open', createdAt: new Date(), createdByName: 'Admin' });
+  const pa = await newPage(browserNormal, { label: 'bulk-admin' });
+  await loginOk(pa, 'admin1');
+  // data peringatan alfa dari langkah sebelumnya masih ada, jadi kotak pemberitahuan harian muncul: tutup dulu
+  await pa.waitForSelector('.modal');
+  await pa.click('.modal-foot .btn-primary');
+  await pa.waitForSelector('.modal', { state: 'detached' });
+  await pa.goto(URL_ + '/#/meetings/' + mid);
+  await pa.waitForSelector('#pd-all');
+  assert.equal(await pa.locator('#pd-apply').isDisabled(), true);
+  await pa.check('#pd-all');
+  await pa.selectOption('#pd-status', 'izin');
+  assert.equal(await pa.locator('#pd-apply').isDisabled(), false);
+  await shot(pa, '46-ubah-massal');
+  await pa.click('#pd-apply');
+  await pa.click('.modal-foot .btn-primary');
+  await pa.waitForSelector('.modal', { state: 'detached' });
+  await pa.waitForFunction(() => !document.querySelector('#pd-all'));
+  assert.ok((await pa.locator('select[data-set]').count()) >= 2);
+  assert.match(await pa.locator('body').innerText(), /Izin/);
+  await pa.goto(URL_ + '/#/settings');
+  await pa.waitForSelector('#tg-test');
+  assert.match(await pa.locator('body').innerText(), /Belum diatur/);
+  await pa.click('#tg-test');
+  await pa.waitForSelector('#tg-msg .form-error');
+  assert.match(await pa.locator('#tg-msg').innerText(), /Telegram belum diatur/);
+  await shot(pa, '47-pengaturan-telegram');
+  await pa.context().close();
 });
 
 await pRep.context().close();

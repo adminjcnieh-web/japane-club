@@ -175,6 +175,13 @@ export async function createAuthUser(env, { username, password, displayName }) {
   }
 }
 
+/** Cari akun Auth (berdasar uid atau username). Mengembalikan uid, atau null bila tidak ada. Galat jaringan dilempar, bukan dianggap "tidak ada". */
+export async function lookupAuthUid(env, { uid, username }) {
+  const body = uid ? { localId: [uid] } : { email: [emailFor(env, username)] };
+  const data = await identityAdmin(env, 'accounts:lookup', body);
+  return data.users?.[0]?.localId || null;
+}
+
 export async function updateAuthUser(env, uid, fields) {
   try {
     await identityAdmin(env, 'accounts:update', { localId: uid, ...fields });

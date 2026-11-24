@@ -182,6 +182,12 @@ export async function createFake() {
       if (body.displayName !== undefined) u.displayName = body.displayName;
       return j(200, { localId: body.localId });
     }
+    if (p === base + 'accounts:lookup') {
+      const found = body.localId
+        ? body.localId.filter((id) => state.authUsers.has(id)).map((id) => ({ localId: id }))
+        : [...state.authUsers.entries()].filter(([, u]) => (body.email || []).includes(u.email)).map(([id]) => ({ localId: id }));
+      return j(200, found.length ? { users: found } : {});
+    }
     if (p === base + 'accounts:delete') {
       state.authUsers.delete(body.localId);
       return j(200, {});
