@@ -4,6 +4,7 @@ import { route, dispatch, currentPath, navigate, cleanupCurrent } from './router
 import { icon } from './icons.js';
 import { esc, initials, ROLE_LABEL } from './utils.js';
 import { renderLogin } from './auth.js';
+import { initPush, stopPush } from './push.js';
 import { toast, loadingBlock, errorState } from './ui.js';
 import { dashboardView } from './dashboard.js';
 import { membersView, memberDetailView } from './members.js';
@@ -126,6 +127,7 @@ async function mountApp() {
   music = initMusic();
   window.__jcMusic = music; // dipakai pengujian
   setTimeout(() => { if (user && user.countsAttendance !== false) checkPendingSignatures(); }, 900); // tanda tangan yang tertunda
+  setTimeout(() => initPush(user), 1500); // notifikasi HP (admin, APK)
   const view = document.getElementById('view');
 
   const render = async () => {
@@ -169,6 +171,7 @@ function doLogout(message) {
   music = null;
   clearProgress();
   cleanupCurrent();
+  stopPush();
   api.logout();
   user = null;
   showLogin(message);

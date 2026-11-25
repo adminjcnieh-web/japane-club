@@ -182,7 +182,7 @@ Pembaruan berikutnya: ubah file lalu jalankan `npx wrangler deploy` lagi.
 | **Tanda tangan kehadiran** | Setelah scan, anggota **wajib** tanda tangan di layar (tidak bisa ditutup sebelum disimpan). Kalau aplikasi ditutup sebelum tanda tangan, kotaknya muncul lagi saat aplikasi dibuka. Tersimpan di Firestore (koleksi `signatures`, gambar PNG kecil). Satu tanda tangan per pertemuan, tidak bisa ditimpa. |
 | **Dapur Jepang (game memasak)** | Gaya Cooking Mama. Menu Belajar → banner **Dapur Jepang**. Animasi tirai noren saat masuk, koki kecil yang memberi petunjuk dan memuji, percikan bintang tiap langkah selesai. **14 hidangan, masing-masing 6-9 langkah**: Onigiri, Ocha, Sushi, Tamagoyaki, Miso-shiru, Takoyaki, Dango, Ramen, Tempura, Matcha, Yakitori, Udon, Gyoza, Okonomiyaki. Gerakan: tahan, ketuk, seret, putar melingkar, geser memotong, geser menggulung, ketuk saat tepat. Hasil 1-3 bintang + daftar kosakata Jepang. Gambar SVG buatan sendiri, jalan di browser tanpa server, skor tidak disimpan (tanpa papan peringkat). |
 | **Daftar hadir PDF** | Menu **Laporan → Daftar hadir (PDF)**: baris anggota, kolom pertemuan, isi = gambar tanda tangan. Kosong = tidak hadir; Izin/Sakit tertulis. Maksimal 3 bulan per file; lebih dari 8 pertemuan dibagi ke halaman berikutnya. Laporan Excel tetap ada (tombol **Unduh Excel**). |
-| **Peringatan tidak hadir beruntun** | Admin melihat kartu "Perlu perhatian" di Beranda + kotak pemberitahuan sekali per hari: anggota yang tidak hadir (alfa/izin/sakit) 3 pertemuan beruntun (batas 2-10 di Pengaturan klub). Hadir dan terlambat memutus runtutan. Bila **Telegram** diatur, pesan otomatis dikirim tiap sore 17.00 WIB (hanya bila daftar berubah). |
+| **Peringatan tidak hadir beruntun** | Admin melihat kartu "Perlu perhatian" di Beranda + kotak pemberitahuan sekali per hari: anggota yang tidak hadir (alfa/izin/sakit) 3 pertemuan beruntun (batas 2-10 di Pengaturan klub). Hadir dan terlambat memutus runtutan. Bila **notifikasi HP (APK)** atau **Telegram** diatur, pesan otomatis dikirim tiap sore 17.00 WIB (hanya bila daftar berubah). |
 | **Ubah status massal** | Di detail pertemuan, panel *Belum tercatat*: centang anggota (atau Pilih semua), pilih status, **Terapkan** (maks. 100 sekali jalan). |
 | **Dapur Jepang: Mode Pesanan** | 3 pelanggan memesan hidangan acak; dihitung waktu dan bintang, tanpa papan peringkat. |
 | **Excel baru** | Menu **Laporan**: filter bulan/tahun, rentang tanggal, dan anggota. File berisi 3 sheet: *Ringkasan Anggota*, *Riwayat Absensi*, *Rekap Per Pertemuan*, lengkap dengan rumus, warna status, dan filter. |
@@ -250,6 +250,16 @@ node test/e2e/e2e.mjs                                    # skenario browser (but
 - Ganti `QR_SECRET` kapan saja dengan `wrangler secret put QR_SECRET` (QR yang sedang tampil otomatis tidak berlaku).
 - Pembatas request di kode berlaku per instance Worker (bukan global). Tambahkan Rate Limiting Rules Cloudflare (langkah 7) untuk perlindungan lebih kuat.
 
+
+## Notifikasi push di HP admin (dari APK, tanpa Telegram)
+Admin dapat notifikasi di HP tiap sore (17.00 WIB) bila ada anggota tidak hadir beruntun. Tidak perlu Telegram. Semua gratis.
+1. Buka console.firebase.google.com → proyek `web-jc-nekat` → ikon roda gigi → **Project settings** → tab **General** → **Add app** → ikon **Android**.
+2. **Android package name** isi persis: `id.japaneseclub.app` → Register app → **Download google-services.json**.
+3. Buka file itu (teks), salin **semua isinya**. Di GitHub repo: Settings → Secrets and variables → Actions → **New repository secret**, nama `GOOGLE_SERVICES_JSON`, tempel isinya.
+4. Tempel `build-apk.yml` yang baru ke `.github/workflows/` (ganti yang lama), lalu Actions → **Build APK** → buat APK baru dan pasang di HP admin (hapus yang lama dulu).
+5. Buka APK, masuk sebagai admin, **izinkan notifikasi**. Cek: Pengaturan klub → **Kirim notifikasi tes**.
+6. Pastikan `wrangler.toml` berisi `[triggers]` dan `crons = ["0 10 * * *"]` (sama seperti Telegram), lalu deploy.
+Catatan: Cloud Messaging API (V1) di Firebase biasanya sudah aktif. Bila tes gagal, buka Project settings → Cloud Messaging dan pastikan "Firebase Cloud Messaging API (V1)" Enabled. Telegram tetap bisa dipakai bersamaan.
 
 ## Notifikasi Telegram (opsional)
 1. Di Telegram cari **@BotFather** → `/newbot` → ikuti petunjuk → salin **token** (bentuknya `123456:ABC...`).

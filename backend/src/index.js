@@ -37,6 +37,9 @@ const ROUTES = [
   ['GET', '/api/dashboard', dashboard.get],
   ['GET', '/api/alerts/absence', alerts.absence],
   ['POST', '/api/alerts/telegram-test', alerts.telegramTest],
+  ['PUT', '/api/push/token', alerts.pushRegister],
+  ['DELETE', '/api/push/token', alerts.pushUnregister],
+  ['POST', '/api/push/test', alerts.pushTest],
 
   ['GET', '/api/members', members.list],
   ['POST', '/api/members', members.create],

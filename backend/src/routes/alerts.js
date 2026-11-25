@@ -5,13 +5,16 @@
 import { requireRole } from '../lib/guard.js';
 import { op, Firestore } from '../lib/firestore.js';
 import { sendTelegram, telegramConfigured } from '../lib/telegram.js';
+import { sendPushToAdmins, tokenId } from '../lib/push.js';
+import { HttpError, readJson } from '../lib/http.js';
 import { readSettings } from './settings.js';
 
 const MAX_LOOKBACK = 15;
 
 export async function absence(ctx) {
   requireRole(ctx, 'admin');
-  return { ...(await computeAbsence(ctx)), telegram: telegramConfigured(ctx.env) };
+  const n = (await ctx.fs.list('pushTokens').catch(() => [])).filter((d) => d.uid === ctx.auth.uid).length;
+  return { ...(await computeAbsence(ctx)), telegram: telegramConfigured(ctx.env), pushDevices: n };
 }
 
 export async function computeAbsence(ctx) {
@@ -63,10 +66,36 @@ export async function telegramTest(ctx) {
   return { ok: true };
 }
 
+/** APK admin mendaftarkan token perangkat (FCM). */
+export async function pushRegister(ctx) {
+  requireRole(ctx, 'admin');
+  const { token } = await readJson(ctx.request, 4000);
+  if (typeof token !== 'string' || token.length < 20 || token.length > 400 || /\s/.test(token)) throw new HttpError(400, 'Token notifikasi tidak valid', 'push_token_invalid');
+  await ctx.fs.commit([op.set(`pushTokens/${await tokenId(token)}`, { uid: ctx.auth.uid, token, createdAt: ctx.now })]);
+  return { ok: true };
+}
+
+export async function pushUnregister(ctx) {
+  requireRole(ctx, 'admin');
+  const { token } = await readJson(ctx.request, 4000);
+  if (typeof token === 'string' && token) await ctx.fs.commit([op.delete(`pushTokens/${await tokenId(token)}`)]);
+  return { ok: true };
+}
+
+/** Tombol "Kirim notifikasi tes". */
+export async function pushTest(ctx) {
+  requireRole(ctx, 'admin');
+  const r = await sendPushToAdmins(ctx.env, ctx.fs, 'Japanese Club', 'Tes notifikasi berhasil. Peringatan tidak hadir beruntun akan muncul di sini.');
+  if (!r.sent) throw new HttpError(400, r.failed ? 'Notifikasi gagal dikirim. Periksa pengaturan Firebase.' : 'Belum ada HP yang terdaftar. Buka aplikasi APK sebagai admin dulu.', 'push_no_device');
+  return { ok: true, ...r };
+}
+
 /** Dipanggil jadwal harian Cloudflare (sore). Hanya mengirim bila daftar berubah sejak pesan terakhir. */
 export async function runDailyAlert(env, now = new Date()) {
-  if (!telegramConfigured(env)) return { sent: false, reason: 'telegram_not_configured' };
   const ctx = { env, now, fs: new Firestore(env) };
+  const tg = telegramConfigured(env);
+  const devices = await ctx.fs.list('pushTokens').catch(() => []);
+  if (!tg && !devices.length) return { sent: false, reason: 'telegram_not_configured' };
   const r = await computeAbsence(ctx);
   const key = r.items.map((i) => `${i.uid}:${i.streak}`).join(',');
   const state = await ctx.fs.get('system/alertState');
@@ -76,7 +105,17 @@ export async function runDailyAlert(env, now = new Date()) {
     return { sent: false, reason: 'none', count: 0 };
   }
   const lines = r.items.map((i, n) => `${n + 1}. ${i.fullName}${i.kelas ? ` (${i.kelas})` : ''} - ${i.streak} pertemuan beruntun`);
-  await sendTelegram(env, `Japanese Club - peringatan tidak hadir beruntun\n\nAnggota berikut sudah tidak hadir ${r.threshold} pertemuan beruntun atau lebih:\n${lines.join('\n')}\n\nAlfa, izin, dan sakit dihitung tidak hadir.`);
+  let ok = false;
+  if (tg) {
+    await sendTelegram(env, `Japanese Club - peringatan tidak hadir beruntun\n\nAnggota berikut sudah tidak hadir ${r.threshold} pertemuan beruntun atau lebih:\n${lines.join('\n')}\n\nAlfa, izin, dan sakit dihitung tidak hadir.`);
+    ok = true;
+  }
+  if (devices.length) {
+    const names = r.items.slice(0, 3).map((i) => i.fullName).join(', ') + (r.items.length > 3 ? ` +${r.items.length - 3} lagi` : '');
+    const p = await sendPushToAdmins(env, ctx.fs, `${r.items.length} anggota tidak hadir ${r.threshold}x beruntun`, names);
+    if (p.sent) ok = true;
+  }
+  if (!ok) return { sent: false, reason: 'push_failed', count: r.items.length };
   await ctx.fs.commit([op.set('system/alertState', { key, sentAt: now })]);
   return { sent: true, count: r.items.length };
 }

@@ -74,11 +74,23 @@ export async function settingsView({ container, isStale }) {
         <div id="st-err"></div>
         <button class="btn btn-primary" type="submit" id="st-save">Simpan pengaturan</button>
       </form></div></div>
+      <div class="panel" style="margin-top:18px"><div class="panel-head"><h2>Notifikasi di HP</h2></div><div class="panel-body" style="max-width:560px">
+        <p>${al?.pushDevices ? `<strong>${al.pushDevices} HP sudah terdaftar.</strong> Setiap sore (17.00 WIB) notifikasi muncul di HP bila ada anggota yang tidak hadir beruntun.` : '<strong>Belum ada HP terdaftar.</strong> Buka aplikasi APK, masuk sebagai admin, lalu izinkan notifikasi.'}</p>
+        <div id="pn-msg" style="margin-top:10px"></div>
+        <button class="btn" type="button" id="pn-test" style="margin-top:10px">Kirim notifikasi tes</button>
+      </div></div>
       <div class="panel" style="margin-top:18px"><div class="panel-head"><h2>Notifikasi Telegram</h2></div><div class="panel-body" style="max-width:560px">
         <p>${al?.telegram ? '<strong>Sudah diatur.</strong> Setiap sore (17.00 WIB) admin dapat pesan Telegram bila ada anggota yang tidak hadir beruntun. Pesan hanya dikirim bila daftarnya berubah.' : '<strong>Belum diatur.</strong> Isi <code>TELEGRAM_BOT_TOKEN</code> dan <code>TELEGRAM_CHAT_ID</code> di Cloudflare (Settings, Variables and Secrets). Langkahnya ada di README.'}</p>
         <div id="tg-msg" style="margin-top:10px"></div>
         <button class="btn" type="button" id="tg-test" style="margin-top:10px">Kirim pesan tes</button>
       </div></div>`;
+    container.querySelector('#pn-test').addEventListener('click', async (e) => {
+      const b = e.currentTarget, box = container.querySelector('#pn-msg');
+      b.disabled = true; box.innerHTML = '';
+      try { await api.post('/api/push/test', {}); toast('Notifikasi tes terkirim. Cek HP kamu.'); }
+      catch (err) { box.innerHTML = `<div class="form-error" role="alert">${icon('alert')}<span>${esc(err.message)}</span></div>`; }
+      finally { b.disabled = false; }
+    });
     container.querySelector('#tg-test').addEventListener('click', async (e) => {
       const b = e.currentTarget, box = container.querySelector('#tg-msg');
       b.disabled = true; box.innerHTML = '';

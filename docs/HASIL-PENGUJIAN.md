@@ -69,7 +69,7 @@ Semua pengujian di bawah **benar-benar dijalankan** (bukan hanya membaca kode), 
 11. **Penolakan absensi dari browser** memakai User-Agent, jadi bukan penghalang mutlak bagi orang teknis.
 
 12. **Menggambar tanda tangan dengan jari di HP asli**: di tes hanya dengan mouse. Sentuhan memakai pointer events yang sama, tapi belum dicoba di layar sentuh sungguhan.
-14. **Peringatan alfa beruntun** hanya tampil saat admin membuka aplikasi (dihitung langsung). Notifikasi HP otomatis jam sore belum ada (butuh Firebase Cloud Messaging atau bot Telegram + cron).
+14. **Peringatan alfa beruntun** hanya tampil saat admin membuka aplikasi (dihitung langsung). Notifikasi HP otomatis jam sore lewat push APK atau Telegram, lihat bagian Notifikasi push di bawah.
 13. Nama anggota yang memakai huruf non-Latin (mis. kanji) tampil `?` di PDF karena memakai font PDF standar.
 
 ## Batasan yang disengaja
@@ -78,3 +78,14 @@ Semua pengujian di bawah **benar-benar dijalankan** (bukan hanya membaca kode), 
 
 ## Peringatan tidak hadir beruntun
 Tes API (2): urutan, batas, terlambat memutus, izin/sakit dihitung, pertemuan arsip diabaikan, hanya admin, validasi batas 2-10. Tes e2e (1): kartu + kotak harian muncul sekali. Game Dapur Jepang: 1 tes e2e memainkan keempat belas hidangan sampai selesai dengan mouse (tahan, ketuk, seret, putar, geser, ketuk saat tepat), cek bintang/kosakata, dan seret salah tempat. Total: 56 tes API, 59/59 e2e (tes game sempat gagal dua kali karena skrip tes menghentikan putaran jari tepat sebelum 3 putaran penuh (3.00 yang sebenarnya 2.99); skrip diperbaiki, game tidak diubah). Gerakan dengan jari di HP asli dan animasi tirai pembuka belum dilihat utuh di perangkat nyata.
+
+## Telegram, ubah status massal, mode pesanan, pemulihan admin
+- Tes API (3): jadwal harian Telegram (kirim sekali, tidak berulang bila daftar sama, kirim lagi bila bertambah, banyak chat id), tanpa token (diam + pesan jelas, hanya admin, token tidak bocor saat Telegram menolak), ubah status massal (buat/ubah/lewati, validasi, hanya staf berhak).
+- Tes skrip (1): pemulihan admin (reset password, dibuat ulang setelah terhapus, ditolak bila ada admin lain aktif, anggota biasa tidak disentuh).
+- Tes e2e: ubah status massal di detail pertemuan, pengaturan Telegram, dan Mode Pesanan (3 pelanggan, solver umum yang membaca jenis gerakan). Total sekarang: 57 tes API, 3 tes skrip, 60/60 e2e.
+- **Belum teruji nyata:** pengiriman ke Telegram sungguhan (sandbox tidak bisa menjangkau Telegram; yang diuji hanya pembentukan permintaan dengan tiruan), jadwal cron Cloudflare, dan skrip pemulihan terhadap Firebase asli.
+
+## Notifikasi push APK (FCM)
+- Tes API (1): daftar token hanya admin, token pendek ditolak, token ganda tetap satu dokumen, tes tanpa HP terdaftar memberi pesan jelas, jadwal harian mengirim push tanpa Telegram (sekali, tidak berulang bila daftar sama), token mati (UNREGISTERED) dihapus otomatis, token dihapus saat keluar akun. Total sekarang: 58 tes API.
+- Klien `public/js/push.js` diam di browser biasa (hanya aktif di APK admin bila plugin ada).
+- **Belum teruji nyata (tidak bisa di sandbox):** pengiriman FCM sungguhan (yang diuji hanya bentuk permintaan dengan tiruan), build APK dengan plugin push dan `google-services.json`, munculnya izin notifikasi Android 13+, jembatan `nativePromise` untuk PushNotifications, notifikasi saat aplikasi tertutup. Tes pertama ada di tombol "Kirim notifikasi tes".

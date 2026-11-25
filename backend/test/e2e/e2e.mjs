@@ -1015,7 +1015,7 @@ await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan geraka
   await pg.waitForSelector('.cook-card');
   await shot(pg, '18-dapur-menu');
   const box = async (sel) => { let b = null; for (let i = 0; i < 10 && !b; i++) { b = await pg.locator(sel).first().boundingBox(); if (!b) await pg.waitForTimeout(150); } if (!b) throw new Error('elemen tidak terlihat: ' + sel); return { x: b.x + b.width / 2, y: b.y + b.height / 2, b }; };
-  const svgPt = async (x, y) => { const b = await pg.locator('.ck-svg').boundingBox(); return { x: b.x + (x / 360) * b.width, y: b.y + (y / 380) * b.height }; };
+  const svgPt = async (x, y) => { let b = null; for (let i = 0; i < 10 && !b; i++) { b = await pg.locator('.ck-svg').boundingBox(); if (!b) await pg.waitForTimeout(100); } if (!b) throw new Error('papan game tidak terlihat'); return { x: b.x + (x / 360) * b.width, y: b.y + (y / 380) * b.height }; };
   const waitStage = (n) => pg.waitForFunction((n) => document.querySelector('.cook-head .small')?.textContent.includes('Langkah ' + n), n, { timeout: 12000 });
   const hold = async (to) => {
     const c = await box('.ck-svg');
@@ -1042,9 +1042,10 @@ await step('game Dapur Jepang: animasi masuk, 3 hidangan dimainkan dengan geraka
   const circle = async (turns) => {
     const c = await svgPt(180 + 76, 196); await pg.mouse.move(c.x, c.y); await pg.mouse.down();
     for (let i = 1; i <= turns * 60 + 60; i++) {
+      // berhenti begitu tahap selesai (papan jadi ck-finished atau sudah diganti)
+      if (await pg.evaluate(() => { const s = document.querySelector('.ck-svg'); return !s || s.classList.contains('ck-finished'); })) break;
       const t = (i / 36) * 2 * Math.PI; const q = await svgPt(180 + Math.cos(t) * 76, 196 + Math.sin(t) * 76);
       await pg.mouse.move(q.x, q.y);
-      if (parseFloat(await pg.locator('.ck-svg').getAttribute('data-turns')) >= turns + 0.15) break;
     }
     await pg.mouse.up();
   };

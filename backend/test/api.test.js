@@ -971,9 +971,9 @@ describe('Telegram harian + ubah status massal', () => {
     for (const [uid, st] of Object.entries(perUid)) fake.putDoc(`attendance/${id}_${uid}`, { meetingId: id, meetingName: `Pertemuan ${n}`, meetingDate: `2026-10-0${n}`, uid, status: st, method: 'auto' });
     return id;
   };
-  let sent, realFetch;
+  let sent, realFetch, fcm;
   beforeEach(() => {
-    sent = [];
+    sent = []; fcm = [];
     realFetch = globalThis.fetch;
     const inner = globalThis.fetch;
     globalThis.fetch = async (url, init) => {
@@ -982,10 +982,47 @@ describe('Telegram harian + ubah status massal', () => {
         sent.push({ url: String(url), ...body });
         return new Response(JSON.stringify({ ok: true }), { status: 200 });
       }
+      if (String(url).startsWith('https://fcm.googleapis.com/')) {
+        const body = JSON.parse(init.body);
+        fcm.push({ url: String(url), auth: init.headers.authorization, ...body.message });
+        if (body.message.token.startsWith('DEAD')) return new Response(JSON.stringify({ error: { status: 'NOT_FOUND', details: [{ errorCode: 'UNREGISTERED' }] } }), { status: 404 });
+        return new Response(JSON.stringify({ name: 'ok' }), { status: 200 });
+      }
       return inner(url, init);
     };
   });
   afterEach(() => { globalThis.fetch = realFetch; });
+
+  test('push FCM: daftar token (admin saja), kirim harian tanpa Telegram, token mati dihapus, tes', async () => {
+    const { runDailyAlert } = await import('../src/routes/alerts.js');
+    delete env.TELEGRAM_BOT_TOKEN; delete env.TELEGRAM_CHAT_ID;
+    const admin = await login('admin1');
+    assert.equal((await api('PUT', '/api/push/token', { token: await login('mem1'), body: { token: 'x'.repeat(40) } })).status, 403);
+    assert.equal((await api('PUT', '/api/push/token', { token: admin, body: { token: 'pendek' } })).status, 400);
+    assert.equal((await api('POST', '/api/push/test', { token: admin })).data.error.code, 'push_no_device');
+    assert.equal((await api('PUT', '/api/push/token', { token: admin, body: { token: 'GOOD' + 'a'.repeat(40) } })).status, 200);
+    assert.equal((await api('PUT', '/api/push/token', { token: admin, body: { token: 'GOOD' + 'a'.repeat(40) } })).status, 200); // dobel = tetap satu
+    assert.equal(fake.countDocs('pushTokens'), 1);
+    assert.equal((await api('GET', '/api/alerts/absence', { token: admin })).data.pushDevices, 1);
+    assert.equal((await api('POST', '/api/push/test', { token: admin })).status, 200);
+    assert.equal(fcm.length, 1); assert.match(fcm[0].auth, /^Bearer /); assert.ok(fcm[0].url.includes('/messages:send'));
+    seedMeeting(1, 'closed', { uidMem00001: 'alfa' });
+    seedMeeting(2, 'closed', { uidMem00001: 'izin' });
+    seedMeeting(3, 'closed', { uidMem00001: 'sakit' });
+    fcm.length = 0;
+    const r = await runDailyAlert(env);
+    assert.equal(r.sent, true); assert.equal(r.count, 1);
+    assert.equal(fcm.length, 1); assert.match(fcm[0].notification.title, /1 anggota/); assert.match(fcm[0].notification.body, /Ani Member/);
+    assert.equal((await runDailyAlert(env)).reason, 'unchanged');
+    // token mati dibersihkan, lalu tidak ada perangkat -> diam
+    await api('PUT', '/api/push/token', { token: admin, body: { token: 'DEAD' + 'b'.repeat(40) } });
+    assert.equal(fake.countDocs('pushTokens'), 2);
+    assert.equal((await api('POST', '/api/push/test', { token: admin })).status, 200);
+    assert.equal(fake.countDocs('pushTokens'), 1);
+    // keluar: token dihapus
+    assert.equal((await api('DELETE', '/api/push/token', { token: admin, body: { token: 'GOOD' + 'a'.repeat(40) } })).status, 200);
+    assert.equal(fake.countDocs('pushTokens'), 0);
+  });
 
   test('jadwal harian: kirim sekali, tidak berulang bila daftar sama, kirim lagi bila bertambah', async () => {
     env.TELEGRAM_BOT_TOKEN = '123:abc'; env.TELEGRAM_CHAT_ID = '777, 888';
