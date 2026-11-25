@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       APP_URL: ${{ inputs.app_url }}
+      GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -692,6 +693,20 @@ jobs:
           # Matikan backup data aplikasi
           sed -i 's#android:allowBackup="true"#android:allowBackup="false"#' "$MANIFEST"
           grep -n "CAMERA\|allowBackup" "$MANIFEST"
+
+      - name: Pasang notifikasi HP (hanya bila secret GOOGLE_SERVICES_JSON diisi)
+        working-directory: apk
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "Secret GOOGLE_SERVICES_JSON kosong: APK dibuat TANPA notifikasi HP."
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          node -e 'const j=JSON.parse(require("fs").readFileSync("android/app/google-services.json","utf8")); const ok=(j.client||[]).some(c=>c.client_info&&c.client_info.android_client_info&&c.client_info.android_client_info.package_name==="id.japaneseclub.app"); if(!ok){console.error("google-services.json bukan untuk paket id.japaneseclub.app"); process.exit(1);} console.log("google-services.json cocok.")'
+          npm install @capacitor/push-notifications@^6.0.0
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' "$MANIFEST"
+          grep -n "POST_NOTIFICATIONS" "$MANIFEST"
 
       - name: Blokir screenshot dan rekam layar (FLAG_SECURE)
         working-directory: apk
