@@ -268,3 +268,10 @@ Catatan: Cloud Messaging API (V1) di Firebase biasanya sudah aktif. Bila tes gag
 4. Cloudflare → Workers → japanese-club → Settings → Variables and Secrets → tambah **Secret** `TELEGRAM_BOT_TOKEN` dan `TELEGRAM_CHAT_ID` (beberapa id dipisah koma).
 5. Pastikan `wrangler.toml` di repo berisi `[triggers]` dan `crons = ["0 10 * * *"]` (10:00 UTC = 17:00 WIB), lalu deploy.
 6. Admin: Pengaturan klub → **Kirim pesan tes**.
+
+## Impor banyak anggota sekaligus
+Username = panggilan (huruf kecil, contoh `salman`). Kalau kembar, orang berikutnya ditambah kata nama setelahnya (contoh `salsa.melani`). Password awal = `default-` + 2 huruf depan panggilan + `1` (panggilan ada di kolom ke-4 daftar-anggota.csv, hasil tebakan, boleh diedit), contoh Salman → `default-sa1`. Nama + kelas yang sama persis dianggap data ganda dan dilewati. Aman dijalankan ulang (username yang sudah ada dilewati).
+1. Tempel `impor-anggota.yml` ke `.github/workflows/`.
+2. Buat secret `DAFTAR_ANGGOTA` berisi isi file `daftar-anggota.csv`. Secret `FIREBASE_SERVICE_ACCOUNT` harus sudah ada.
+3. Actions → **Impor Anggota** → Run workflow. Daftar username dan password ada di Artifacts (`hasil-akun`).
+4. Setelah selesai, hapus secret `DAFTAR_ANGGOTA`. Minta anggota mengganti password lewat Profil.

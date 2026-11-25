@@ -89,3 +89,8 @@ Tes API (2): urutan, batas, terlambat memutus, izin/sakit dihitung, pertemuan ar
 - Tes API (1): daftar token hanya admin, token pendek ditolak, token ganda tetap satu dokumen, tes tanpa HP terdaftar memberi pesan jelas, jadwal harian mengirim push tanpa Telegram (sekali, tidak berulang bila daftar sama), token mati (UNREGISTERED) dihapus otomatis, token dihapus saat keluar akun. Total sekarang: 58 tes API.
 - Klien `public/js/push.js` diam di browser biasa (hanya aktif di APK admin bila plugin ada).
 - **Belum teruji nyata (tidak bisa di sandbox):** pengiriman FCM sungguhan (yang diuji hanya bentuk permintaan dengan tiruan), build APK dengan plugin push dan `google-services.json`, munculnya izin notifikasi Android 13+, jembatan `nativePromise` untuk PushNotifications, notifikasi saat aplikasi tertutup. Tes pertama ada di tombol "Kirim notifikasi tes".
+
+## Impor anggota massal
+- Tes skrip (1): username dari nama depan (awalan Muhammad/M./Rd. dilewati), kembar diberi huruf berikutnya, nama+kelas ganda dibuang, password `default-xx1`, akun bisa login, jalan ulang melewati yang sudah ada. Total: 4 tes skrip.
+- Daftar asli (140 baris) dicek: 136 username unik setelah 4 data ganda dibuang.
+- **Belum teruji nyata:** menjalankan terhadap Firebase asli (sandbox tidak bisa menjangkaunya).

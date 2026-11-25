@@ -5,6 +5,7 @@ import worker from '../src/index.js';
 import { createFake } from './fake-google.js';
 import { bootstrapAdmin } from '../../scripts/bootstrap-admin.mjs';
 import { seedDemo, removeDemo } from '../../scripts/seed-demo.mjs';
+import { parseList, buildAccounts, importMembers } from '../../scripts/import-members.mjs';
 import { resetRateLimits } from '../src/lib/ratelimit.js';
 
 let fake;
@@ -84,4 +85,19 @@ test('pemulihan admin: reset password, buat ulang setelah terhapus, aman untuk a
   await deleteAuthUser(fake.env, r3.uid);
   await assert.rejects(recoverAdmin(fake.env, { username: 'anggota1', fullName: 'Admin Baru', password: 'Baru12345' }), /anggota biasa/);
   assert.ok(fake.getDoc('users/uidAnggota1'));
+});
+
+test('impor anggota: username dari nama depan, password default-xx1, ganda dibuang, bisa login, aman diulang', async () => {
+  const rows = parseList('Nama;Kelas;Divisi\nMuhammad Salman Fariz;X BP 1;Kaiwa\nSalsabil Hana;X BP 2;Manga\nSalman Ali;XI RPL 1;Kaiwa\nSalman Ali;XI RPL 1;Kaiwa\nWINARNI;X BP 1;Kaiwa\n');
+  assert.equal(rows.length, 4);
+  const acc = buildAccounts(rows);
+  assert.deepEqual(acc.map((a) => a.username), ['salman', 'salsabil', 'salman.ali', 'winarni']);
+  assert.equal(acc[0].password, 'default-sa1');
+  const r = await importMembers(fake.env, rows);
+  assert.equal(r.created.length, 4); assert.equal(r.failed.length, 0);
+  const l = await login('salman', 'default-sa1');
+  assert.equal(l.status, 200); assert.equal(l.data.user.role, 'member'); assert.equal(l.data.user.kelas, 'X BP 1');
+  assert.equal((await login('winarni', 'default-wi1')).status, 200);
+  const again = await importMembers(fake.env, rows);
+  assert.equal(again.created.length, 0); assert.equal(again.skipped.length, 4);
 });
